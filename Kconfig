@@ -1,0 +1,9 @@
+config SECURITY_APPCL
+	bool "appcl-lsm module support"
+	depends on SECURITY
+	default y
+	help
+		If you say Y here support for the appcl-lsm will be compiled
+		into the kernel.
+
+		If unsure, say N.
