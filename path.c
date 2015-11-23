@@ -118,22 +118,13 @@ out:
       printk(KERN_ALERT "d_namespace_path error: 0x%08x \n", error);
       printk(KERN_ALERT "d_namespace_path goto out name: %s \n", *name);
 
-      struct pacl_o *appcl_object;
-      appcl_object->path_name = *name;
-      appcl_object->o_type = 0;
-      appcl_object->o_flags = 0x0008;
-      appcl_object->o_mask = 0x00000001;
       /*
        *
-       * warning could break shit
+       * todo : *name contains path of application
+       * move this to appcl_lsm.c within security hook (open file)
        *
        */
-      appcl_object_root = kmalloc(sizeof(struct pacl_o), GFP_KERNEL);
-      if (!appcl_object_root) {
-        printk(KERN_ALERT "kmalloc Failed \n");
-      }
-      printk(KERN_ALERT "appcl_object_root print: %s \n", appcl_object_root->path_name);
-      kfree(appcl_object_root);
+       
       return error;
 
 }
