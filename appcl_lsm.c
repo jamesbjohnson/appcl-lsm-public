@@ -6,20 +6,48 @@
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#include <linux/security.h>
+#include <linux/init.h>
+#include <linux/kd.h>
+#include <linux/kernel.h>
+#include <linux/tracehook.h>
+#include <linux/errno.h>
+#include <linux/sched.h>
 #include <linux/lsm_hooks.h>
-#include <linux/limits.h>
-#include <linux/stat.h>
-
+#include <linux/xattr.h>
+#include <linux/capability.h>
+#include <linux/unistd.h>
 #include <linux/mm.h>
 #include <linux/mman.h>
-#include <linux/mount.h>
+#include <linux/slab.h>
+#include <linux/pagemap.h>
+#include <linux/proc_fs.h>
+#include <linux/swap.h>
+#include <linux/spinlock.h>
+#include <linux/syscalls.h>
+#include <linux/dcache.h>
+#include <linux/file.h>
+#include <linux/fdtable.h>
 #include <linux/namei.h>
-#include <linux/ptrace.h>
-#include <linux/ctype.h>
-#include <linux/sysctl.h>
-#include <linux/audit.h>
+#include <linux/mount.h>
+#include <linux/tty.h>
+#include <linux/types.h>
+#include <linux/atomic.h>
+#include <linux/bitops.h>
+#include <linux/interrupt.h>
+#include <linux/parser.h>
+#include <linux/nfs_mount.h>
+#include <linux/string.h>
+#include <linux/selinux.h>
+#include <linux/mutex.h>
+#include <linux/posix-timers.h>
+#include <linux/syslog.h>
 #include <linux/user_namespace.h>
+#include <linux/export.h>
+#include <linux/msg.h>
+#include <linux/shm.h>
+#include <linux/gfp.h>
+#include <linux/list.h>
+#include <linux/cred.h>
 
 #include "include/appcl_lsm.h"
 
@@ -31,7 +59,8 @@
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-unsigned int appcl_path_max = 2 * PATH_MAX;
+static struct kmem_cache *sel_inode_cache;
+
 /*
 static int appcl_lsm_capable(const struct cred *cred, struct user_namespace *ns,
 			    int cap, int audit)
@@ -49,6 +78,7 @@ static int appcl_lsm_capable(const struct cred *cred, struct user_namespace *ns,
 
 static int appcl_lsm_bprm_set_creds(struct linux_binprm *bprm)
 {
+	//printk(KERN_ALERT "AppCL LSM bprm_set_creds security hook\n");
 	return 0;
 }
 /*
@@ -79,18 +109,52 @@ static int appcl_lsm_bprm_secureexec(struct linux_binprm *bprm)
  *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/*
-static int appcl_lsm_inode_alloc(struct inode *inode)
+
+static int appcl_lsm_inode_alloc_security(struct inode *inode)
 {
+	printk(KERN_ALERT "INODE ALLOC SECURITY START \n");
+	struct inode_security_struct *isec;
+	kuid_t sid = current_suid();
+
+	isec = kmem_cache_zalloc(sel_inode_cache, GFP_NOFS);
+	if (!isec)
+        	return -ENOMEM;
+
+	mutex_init(&isec->lock);
+        INIT_LIST_HEAD(&isec->list);
+	isec->inode = inode;
+	isec->sid = sid;
+	isec->sclass = 0x4000;
+	isec->task_sid = sid;
+	inode->i_security = isec;
+
+	printk(KERN_ALERT "INODE ALLOC SECURITY END \n");
 	return 0;
 }
-*/
-/*
-static void appcl_lsm_inode_free(struct inode *inode)
+
+static void inode_free_rcu(struct rcu_head *head)
 {
+         struct inode_security_struct *isec;
+
+         isec = container_of(head, struct inode_security_struct, rcu);
+         kmem_cache_free(sel_inode_cache, isec);
+	 return;
+}
+
+static void appcl_lsm_inode_free_security(struct inode *inode)
+{
+	printk(KERN_ALERT "INODE FREE SECURITY START \n");
+	struct inode_security_struct *isec = inode->i_security;
+
+	if (!list_empty_careful(&isec->list))
+                 list_del_init(&isec->list);
+
+	call_rcu(&isec->rcu, inode_free_rcu);
+
+	printk(KERN_ALERT "INODE FREE SECURITY END \n");
 	return;
 }
-*/
+
 /*
 static int appcl_lsm_inode_init_security(struct inode *inode, struct inode *dir,
                                   const struct qstr *qstr,
@@ -99,14 +163,7 @@ static int appcl_lsm_inode_init_security(struct inode *inode, struct inode *dir,
 	return 0;
 }
 */
-/*
-static int appcl_lsm_old_inode_init_security(struct inode *inode, struct inode *dir,
-                                      const struct qstr *qstr, const char **name,
-                                      void **value, size_t *len)
-{
-	return 0;
-}
-*/
+
 static int appcl_lsm_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	return 0;
@@ -252,31 +309,105 @@ static int appcl_lsm_file_permission(struct file *file, int mask)
 {
 	return 0;
 }
-/*
-static int appcl_lsm_file_alloc(struct file *file)
+
+static int appcl_lsm_file_alloc_security(struct file *file)
 {
+	//printk(KERN_ALERT "FILE ALLOC SECURITY START\n");
+
+	//printk(KERN_ALERT "FILE ALLOC SECURITY START\n");
 	return 0;
 }
-*/
-/*
-static void appcl_lsm_file_free(struct file *file)
+
+
+static void appcl_lsm_file_free_security(struct file *file)
 {
+	//printk(KERN_ALERT "FILE FREE SECURITY START\n");
+
+	//printk(KERN_ALERT "FILE FREE SECURITY START\n");
 	return;
 }
-*/
+
 static int appcl_lsm_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	return 0;
+}
+
+static int appcl_lsm_file_mprotect(struct vm_area_struct *vma, unsigned long reqprot,
+                            	unsigned long prot)
+{
+	return 0;
+}
+
+static int appcl_lsm_file_lock(struct file *file, unsigned int cmd)
+{
+	return 0;
+}
+
+static int appcl_lsm_file_fcntl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	return 0;
+}
+
+static void appcl_lsm_file_set_fowner(struct file *file)
+{
+	return;
+}
+
+static int appcl_lsm_file_send_sigiotask(struct task_struct *tsk,
+                                  	struct fown_struct *fown, int sig)
+{
+	return 0;
+}
+
+static int appcl_lsm_file_receive(struct file *file)
+{
+	return 0;
+}
+
+static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
+{
+	return 0;
+}
+
+static int appcl_lsm_task_create(unsigned long clone_flags)
+{
+	return 0;
+}
+
+static void appcl_lsm_task_free(struct task_struct *task)
+{
+	return;
+}
+
+static int appcl_lsm_cred_alloc_blank(struct cred *cred, gfp_t gfp)
+{
+	return 0;
+}
+
+static void appcl_lsm_cred_free(struct cred *cred)
+{
+	return;
+}
+
+static int appcl_lsm_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
+{
+	return 0;
+}
+
+static void appcl_lsm_cred_transfer(struct cred *new, const struct cred *old)
+{
+	return;
 }
 
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  *
- * APPCL-LSM SECURITY OPERATIONS STRUCTURE
+ * APPCL-LSM SECURITY HOOK LIST STRUCTURE
  *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 static struct security_hook_list appcl_hooks[] = {
 	LSM_HOOK_INIT(bprm_set_creds, appcl_lsm_bprm_set_creds),
 	//LSM_HOOK_INIT(bprm_check, appcl_lsm_bprm_check),
@@ -284,10 +415,9 @@ static struct security_hook_list appcl_hooks[] = {
 	LSM_HOOK_INIT(bprm_committed_creds, appcl_lsm_bprm_committed_creds),
 	LSM_HOOK_INIT(bprm_secureexec, appcl_lsm_bprm_secureexec),
 
-	//LSM_HOOK_INIT(inode_alloc, appcl_lsm_inode_alloc),
-	//LSM_HOOK_INIT(inode_free, appcl_lsm_inode_free),
+	LSM_HOOK_INIT(inode_alloc_security, appcl_lsm_inode_alloc_security),
+	LSM_HOOK_INIT(inode_free_security, appcl_lsm_inode_free_security),
 	//LSM_HOOK_INIT(inode_init_security, appcl_lsm_inode_init_security),
-	//LSM_HOOK_INIT(old_inode_init_security, appcl_lsm_old_inode_init_security),
 	LSM_HOOK_INIT(inode_create, appcl_lsm_inode_create),
 	LSM_HOOK_INIT(inode_link, appcl_lsm_inode_link),
 	LSM_HOOK_INIT(inode_unlink, appcl_lsm_inode_unlink),
@@ -314,9 +444,25 @@ static struct security_hook_list appcl_hooks[] = {
 	LSM_HOOK_INIT(inode_getsecid, appcl_lsm_inode_getsecid),
 
 	LSM_HOOK_INIT(file_permission, appcl_lsm_file_permission),
-	//LSM_HOOK_INIT(file_alloc, appcl_lsm_file_alloc),
-	//LSM_HOOK_INIT(file_free, appcl_lsm_file_free),
+	LSM_HOOK_INIT(file_alloc_security, appcl_lsm_file_alloc_security),
+	LSM_HOOK_INIT(file_free_security, appcl_lsm_file_free_security),
 	LSM_HOOK_INIT(file_ioctl, appcl_lsm_file_ioctl),
+	LSM_HOOK_INIT(file_mprotect, appcl_lsm_file_mprotect),
+	LSM_HOOK_INIT(file_lock, appcl_lsm_file_lock),
+	LSM_HOOK_INIT(file_fcntl, appcl_lsm_file_fcntl),
+	LSM_HOOK_INIT(file_set_fowner, appcl_lsm_file_set_fowner),
+	LSM_HOOK_INIT(file_send_sigiotask, appcl_lsm_file_send_sigiotask),
+	LSM_HOOK_INIT(file_receive, appcl_lsm_file_receive),
+	LSM_HOOK_INIT(file_open, appcl_lsm_file_open),
+
+	LSM_HOOK_INIT(task_create, appcl_lsm_task_create),
+	LSM_HOOK_INIT(task_free, appcl_lsm_task_free),
+	LSM_HOOK_INIT(task_create, appcl_lsm_task_create),
+
+	LSM_HOOK_INIT(cred_alloc_blank, appcl_lsm_cred_alloc_blank),
+	LSM_HOOK_INIT(cred_free, appcl_lsm_cred_free),
+	LSM_HOOK_INIT(cred_prepare, appcl_lsm_cred_prepare),
+	LSM_HOOK_INIT(cred_transfer, appcl_lsm_cred_transfer),
 };
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -329,8 +475,13 @@ static struct security_hook_list appcl_hooks[] = {
 
 static int __init appcl_lsm_init(void)
 {
+	printk(KERN_ALERT "AppCL - LSM Security Module Initialising ... \n");
+	sel_inode_cache = kmem_cache_create("appcl_lsm_inode_security",
+                                	sizeof(struct inode_security_struct),
+                                             0, SLAB_PANIC, NULL);
+
 	security_add_hooks(appcl_hooks, ARRAY_SIZE(appcl_hooks));
-	printk(KERN_ALERT "AppCL - LSM Security Module Initialised\n");
+	printk(KERN_ALERT "AppCL - LSM Security Module Successfully Initialised\n");
 	return 0;
 }
 
