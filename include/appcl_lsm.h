@@ -11,6 +11,7 @@
 extern bool appcl_g_debug;
 extern unsigned int appcl_path_max;
 
+
 /* pacl structure */
 /* pacl flags values */
 #define PACL_AUTO_INHERIT	0x01
@@ -93,16 +94,17 @@ extern unsigned int appcl_path_max;
 #define PACL_SYSTEM_SPECIAL_ID		4
 
 
-
 struct pacl_o
 {
-	char *path_name;
 	unsigned short o_type;
 	unsigned short o_flags;
 	unsigned int o_mask;
+	union
+	{
+			u32	o_id;
+			char *	o_who;
+	};
 };
-
-static struct pacl_o *appcl_object_root;
 
 struct pacl
 {

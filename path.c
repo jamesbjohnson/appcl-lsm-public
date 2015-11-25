@@ -8,7 +8,6 @@
 #include <linux/mount.h>
 #include <linux/fs.h>
 #include <linux/limits.h>
-#include <linux/string.h>
 #include <linux/namei.h>
 #include <linux/nsproxy.h>
 #include <linux/path.h>
@@ -46,12 +45,10 @@ static int d_namespace_path(struct path *path, char *buf, int buflen,
             if (IS_ERR(res)) {
                   *name = buf;
                   return PTR_ERR(res);
-                  printk(KERN_ALERT "IS_ERR name: %p \n", &name);
             }
             if (path->dentry->d_sb->s_magic == PROC_SUPER_MAGIC &&
                       strncmp(*name, "/sys/", 5) == 0) {
-                      return prepend(name, *name - buf, "/proc", 5);
-                      printk(KERN_ALERT "d_namespace_path PROC_SUPER_MAGIC name: %s \n", *name);
+                  return prepend(name, *name - buf, "/proc", 5);
             }
             return 0;
       }
@@ -62,12 +59,10 @@ static int d_namespace_path(struct path *path, char *buf, int buflen,
             get_fs_root(current->fs, &root);
             res = __d_path(path, &root, buf, buflen);
             path_put(&root);
-            printk(KERN_ALERT "d_namespace_path relative to chroot if: %s, %x \n", *res, connected);
       } else {
             res = d_absolute_path(path, buf, buflen);
             if (!our_mnt(path->mnt))
                   connected = 0;
-            printk(KERN_ALERT "d_namespace_path relative to chroot else: %s, %x \n", *res, connected);
       }
 
       /* handle error conditions - and still allow a partial path
@@ -87,7 +82,6 @@ static int d_namespace_path(struct path *path, char *buf, int buflen,
             connected = 0;
 
         *name = res;
-        printk(KERN_ALERT "d_namespace_path name: %s \n", *name);
 
         /* Handle two cases
          * A deleted dentry && profile is not allowing mediation of deletion
@@ -115,16 +109,6 @@ static int d_namespace_path(struct path *path, char *buf, int buflen,
          }
 
 out:
-      printk(KERN_ALERT "d_namespace_path error: 0x%08x \n", error);
-      printk(KERN_ALERT "d_namespace_path goto out name: %s \n", *name);
-
-      /*
-       *
-       * todo : *name contains path of application
-       * move this to appcl_lsm.c within security hook (open file)
-       *
-       */
-       
       return error;
 
 }
@@ -144,27 +128,20 @@ static int get_name_to_buffer(struct path *path, int flags, char *buffer,
             strcpy(&buffer[size - 2], "/");
 
       if (info && error) {
-            if (error == -ENOENT) {
+            if (error == -ENOENT)
                   *info = "Failed name lookup - deleted entry";
-                  printk(KERN_ALERT "info & error ENOENT: %p, %p \n", &info, &error);
-            } else if (error == -EACCES) {
+            else if (error == -EACCES)
                   *info = "Failed name lookup - deleted entry";
-                  printk(KERN_ALERT "info & error EACCES: %p, %p \n", &info, &error);
-            } else if (error == -ENAMETOOLONG) {
+            else if (error == -ENAMETOOLONG)
                   *info = "Failed name lookup - name too long";
-                    printk(KERN_ALERT "info & error ENAMETOOLONG: %p, %p \n", &info, &error);
-            } else {
+            else
                   *info = "Failed name lookup";
-                    printk(KERN_ALERT "info & error else: %p, %p \n", &info, &error);
-            }
       }
 
-      printk(KERN_ALERT "get_name_to_buffer error: 0x%08x \n", error);
-      printk(KERN_ALERT "get_name_to_buffer info: %s \n", *info);
       return error;
 }
 
-/* appcl_path_name - compute the pathname of a file */
+/* aa_path_name - compute the pathname of a file */
 
 int appcl_path_name(struct path *path, int flags, char **buffer,
                   const char **name, const char **info)
@@ -191,9 +168,8 @@ int appcl_path_name(struct path *path, int flags, char **buffer,
                   return -ENAMETOOLONG;
             *info = NULL;
       }
-
       *buffer = buf;
       *name = str;
-      printk(KERN_ALERT "appcl_path_name error: 0x%08x \n", error);
+
       return error;
 }
