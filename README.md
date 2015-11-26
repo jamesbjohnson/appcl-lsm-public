@@ -14,7 +14,7 @@ contains the security hooks through the LSM framework.
 contains security module 'init', to register the security module with the kernel.
 
 # appcl_lsm.h
-# defines security label structure
+defines security label structure
 
  path.c - not compiled
  contains apparmor functions related to identifying the path of an application.
