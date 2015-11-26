@@ -106,6 +106,7 @@ static int appcl_lsm_bprm_secureexec(struct linux_binprm *bprm)
  *
  *
  * INODE SECURITY HOOKS
+ * With thanks to SELinux
  *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -128,7 +129,12 @@ static int appcl_lsm_inode_alloc_security(struct inode *inode)
 	isec->task_sid = sid;
 	inode->i_security = isec;
 
+	printk(KERN_ALERT "INODE INODE ADDR: 0x%08x\n", &inode);
+	printk(KERN_ALERT "INODE SID: %08x\n", isec->sid );
+	printk(KERN_ALERT "INODE SCLASS: %08x\n", isec->sclass );
+	printk(KERN_ALERT "INODE ISEC ADDR: 0x%08x\n", &isec );
 	printk(KERN_ALERT "INODE ALLOC SECURITY END \n");
+
 	return 0;
 }
 
