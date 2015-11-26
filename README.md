@@ -7,7 +7,7 @@ License - GNU General Public License v3.0
 Final year project at Leeds Beckett University, BSc (Hons) Computer Forensics and Security
 
 AppCL-LSM is currently in the early stages of development.
-  - Currently the module initialises various security hooks through the LSM framework and registers the security module with the kernel.
+  - appcl-lsm.org contains a development blog for updates to the public repository
 
 # appcl_lsm.c   
 contains the security hooks through the LSM framework.
