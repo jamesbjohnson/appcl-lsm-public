@@ -1,6 +1,6 @@
-appcl-lsm README.md
+# AppCL - LSM README.md
 
-linux security module to implement program based access control mechanisms
+Linux kernel security module to implement program based access control mechanisms
 Author - James Johnson
 License - GNU General Public License v3.0
 
