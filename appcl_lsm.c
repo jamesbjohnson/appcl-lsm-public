@@ -17,6 +17,8 @@ Linux kernel security module to implement program based access control mechanism
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
     
+    For a full copy of the GNU General Public License, see <http://www.gnu.org/licenses/>.
+    
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
