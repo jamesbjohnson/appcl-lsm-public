@@ -259,7 +259,7 @@ struct file_security_label {
         u32 sid;
         u32 fown_sid;
         u32 isid;
-        u32 pseqno;            
+        u32 pseqno;
 };
 */
 
