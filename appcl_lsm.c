@@ -1,4 +1,25 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+AppCL - LSM appcl_lsm.c
+
+Linux kernel security module to implement program based access control mechanisms
+
+    Author - James Johnson
+    License - GNU General Public License v3.0
+    Copyright (C) 2015  James Johnson
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    For a full copy of the GNU General Public License, see <http://www.gnu.org/licenses/>.
+
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  *
  * INCLUDES
@@ -14,6 +35,7 @@
 #include <linux/sched.h>
 #include <linux/lsm_hooks.h>
 #include <linux/xattr.h>
+#include <linux/security.h>
 #include <linux/capability.h>
 #include <linux/unistd.h>
 #include <linux/mm.h>
@@ -37,7 +59,6 @@
 #include <linux/parser.h>
 #include <linux/nfs_mount.h>
 #include <linux/string.h>
-#include <linux/selinux.h>
 #include <linux/mutex.h>
 #include <linux/posix-timers.h>
 #include <linux/syslog.h>
@@ -46,8 +67,14 @@
 #include <linux/msg.h>
 #include <linux/shm.h>
 #include <linux/gfp.h>
+
 #include <linux/list.h>
 #include <linux/cred.h>
+#include <linux/fs.h>
+#include <linux/fs_struct.h>
+#include <linux/path.h>
+#include <linux/fdtable.h>
+#include <linux/binfmts.h>
 
 #include "include/appcl_lsm.h"
 
@@ -60,7 +87,38 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 static struct kmem_cache *sel_inode_cache;
+static struct kmem_cache *sel_file_cache;
+/*
+static void init_task_cred_attr(void) {
 
+	printk(KERN_ALERT "AppCL LSM: init_task_cred_attr Initialising ... \n");
+
+	struct cred *cred = (struct cred *) current->real_cred;
+        struct task_cred_attr *credattr;
+
+        credattr = kzalloc(sizeof(struct task_cred_attr), GFP_KERNEL);
+        if (!credattr)
+                panic("AppCL LSM:  Failed to initialise initial task.\n");
+
+        credattr->osid = 0;
+	credattr->sid = 0;
+        cred->security = credattr;
+
+	printk(KERN_ALERT "CRED ATTR ADDR: 0x%08x\n", &credattr);
+	printk(KERN_ALERT "CRED ATTR OSID: %08x\n", credattr->osid );
+	printk(KERN_ALERT "CRED ATTR SID: %08x\n", credattr->sid );
+	printk(KERN_ALERT "AppCL LSM: init_task_cred_attr end ... \n");
+	return;
+}
+*/
+/*
+static inline u32 current_sid(void)
+{
+        const struct task_cred_attr *credattr = current_security();
+
+        return credattr->sid;
+}
+*/
 /*
 static int appcl_lsm_capable(const struct cred *cred, struct user_namespace *ns,
 			    int cap, int audit)
@@ -78,7 +136,79 @@ static int appcl_lsm_capable(const struct cred *cred, struct user_namespace *ns,
 
 static int appcl_lsm_bprm_set_creds(struct linux_binprm *bprm)
 {
-	//printk(KERN_ALERT "AppCL LSM bprm_set_creds security hook\n");
+
+	char *tmp;
+	char *fpath_name;
+	struct path *fpath;
+
+	//spin_lock(&file->f_lock);
+	fpath = &bprm->file->f_path;
+	path_get(fpath);
+	//spin_unlock(&file->f_lock);
+
+	tmp = (char *)__get_free_page(GFP_TEMPORARY);
+
+	if (!tmp) {
+		path_put(fpath);
+		return -ENOMEM;
+	}
+
+	fpath_name = d_path(fpath, tmp, PAGE_SIZE);
+	path_put(fpath);
+
+	if (IS_ERR(fpath_name)) {
+		free_page((unsigned long) tmp);
+		return PTR_ERR(fpath_name);
+	}
+
+	char *check_name = "/bin/nano";
+
+	if ((strcmp(check_name, fpath_name))) {
+		printk(KERN_ALERT "BPRM PATH NAME %s \n", fpath_name);
+	}
+
+	/*
+	 *
+	 *
+	 * fpath_name contains path of current file
+	 *
+	 *
+	 */
+
+	free_page((unsigned long) tmp);
+	/*
+	//printk(KERN_INFO "AppCL LSM bprm_set_creds security hook\n");
+	if (set_cred_count < 20)
+		printk(KERN_INFO "BPRM SET CREDS START \n");
+
+	const struct task_cred_attr *old_cred;
+        struct task_cred_attr *credattr;
+
+        old_cred = current_security();
+
+         Default to the current task SID.
+        credattr->sid = old_cred->sid;
+        credattr->osid = old_cred->sid;
+
+         Reset fs, key, and sock SIDs on execve.
+        credattr->create_sid = 0;
+        credattr->keycreate_sid = 0;
+        credattr->sockcreate_sid = 0;
+
+        if (old_cred->exec_sid) {
+                credattr->sid = old_cred->exec_sid;
+                  Reset exec SID on execve.
+                credattr->exec_sid = 0;
+        }
+
+	if (set_cred_count < 20) {
+		printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &credattr);
+		printk(KERN_INFO "CRED ATTR SID: %08x\n", credattr->sid );
+		printk(KERN_INFO "CRED ATTR OSID: %08x\n", credattr->osid );
+		printk(KERN_INFO "BPRM SET CREDS END \n");
+	}
+
+	set_cred_count++; */
 	return 0;
 }
 /*
@@ -111,53 +241,71 @@ static int appcl_lsm_bprm_secureexec(struct linux_binprm *bprm)
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-static int appcl_lsm_inode_alloc_security(struct inode *inode)
+static int inode_alloc_security(struct inode *inode)
 {
-	printk(KERN_ALERT "INODE ALLOC SECURITY START \n");
-	struct inode_security_struct *isec;
-	kuid_t sid = current_suid();
+	//printk(KERN_INFO "INODE ALLOC SECURITY START \n");
 
-	isec = kmem_cache_zalloc(sel_inode_cache, GFP_NOFS);
-	if (!isec)
+	struct inode_security_label *ilabel;
+	//kuid_t sid = current_suid();
+
+	ilabel = kmem_cache_zalloc(sel_inode_cache, GFP_NOFS);
+	if (!ilabel)
         	return -ENOMEM;
 
-	mutex_init(&isec->lock);
-        INIT_LIST_HEAD(&isec->list);
-	isec->inode = inode;
-	isec->sid = sid;
-	isec->sclass = 0x4000;
-	isec->task_sid = sid;
-	inode->i_security = isec;
+	mutex_init(&ilabel->lock);
+        INIT_LIST_HEAD(&ilabel->list);
+	ilabel->inode = inode;
+	ilabel->sclass = 0x4000;
 
-	printk(KERN_ALERT "INODE INODE ADDR: 0x%08x\n", &inode);
-	printk(KERN_ALERT "INODE SID: %08x\n", isec->sid );
-	printk(KERN_ALERT "INODE SCLASS: %08x\n", isec->sclass );
-	printk(KERN_ALERT "INODE ISEC ADDR: 0x%08x\n", &isec );
-	printk(KERN_ALERT "INODE ALLOC SECURITY END \n");
+	ilabel->a_flags = APPCL_AUTO_INHERIT;
+	ilabel->a_count = 1;
+	ilabel->a_owner_mask = 1;
+	ilabel->a_group_mask = 1;
+	ilabel->a_other_mask = 2;
+
+	inode->i_security = ilabel;
+
+	printk(KERN_INFO "INODE INODE ADDR: 0x%08x\n", &inode);
+	printk(KERN_INFO "INODE FLAGS: %08x\n", ilabel->a_flags );
+	//printk(KERN_INFO "INODE COUNT: %08x\n", ilabel->a_count );
+	//printk(KERN_INFO "INODE OWNER MASK: %08x\n", ilabel->a_owner_mask );
+	printk(KERN_INFO "INODE ILABEL ADDR: 0x%08x\n", &ilabel );
+	//printk(KERN_INFO "INODE ALLOC SECURITY END \n");
 
 	return 0;
 }
 
+static int appcl_lsm_inode_alloc_security(struct inode *inode)
+{
+	return inode_alloc_security(inode);
+}
+
 static void inode_free_rcu(struct rcu_head *head)
 {
-         struct inode_security_struct *isec;
+         struct inode_security_label *ilabel;
 
-         isec = container_of(head, struct inode_security_struct, rcu);
-         kmem_cache_free(sel_inode_cache, isec);
+         ilabel = container_of(head, struct inode_security_label, rcu);
+         kmem_cache_free(sel_inode_cache, ilabel);
 	 return;
+}
+
+static void inode_free_security(struct inode *inode)
+{
+	//printk(KERN_INFO "INODE FREE SECURITY START \n");
+	struct inode_security_label *ilabel = inode->i_security;
+
+	if (!list_empty_careful(&ilabel->list))
+                 list_del_init(&ilabel->list);
+
+	call_rcu(&ilabel->rcu, inode_free_rcu);
+
+	//printk(KERN_INFO "INODE FREE SECURITY END \n");
+	return;
 }
 
 static void appcl_lsm_inode_free_security(struct inode *inode)
 {
-	printk(KERN_ALERT "INODE FREE SECURITY START \n");
-	struct inode_security_struct *isec = inode->i_security;
-
-	if (!list_empty_careful(&isec->list))
-                 list_del_init(&isec->list);
-
-	call_rcu(&isec->rcu, inode_free_rcu);
-
-	printk(KERN_ALERT "INODE FREE SECURITY END \n");
+	inode_free_security(inode);
 	return;
 }
 
@@ -316,20 +464,94 @@ static int appcl_lsm_file_permission(struct file *file, int mask)
 	return 0;
 }
 
-static int appcl_lsm_file_alloc_security(struct file *file)
+static int file_alloc_security(struct file *file)
 {
-	//printk(KERN_ALERT "FILE ALLOC SECURITY START\n");
 
-	//printk(KERN_ALERT "FILE ALLOC SECURITY START\n");
+	//printk(KERN_INFO "FILE ALLOC SECURITY START\n");
+	/*
+	struct file_security_label *flabel;
+        u32 sid = 0;
+
+        flabel = kzalloc(sizeof(struct file_security_label), GFP_KERNEL);
+        if (!flabel) {
+		printk(KERN_INFO "FILE ALLOC NO FLABEL\n");
+                //return -ENOMEM;
+		return 0;
+	}
+
+        flabel->sid = sid;
+        flabel->fown_sid = sid;
+        file->f_security = flabel;
+
+	printk(KERN_INFO "FILE FILE ADDR: 0x%08x\n", &file);
+	printk(KERN_INFO "FILE SID: %08x\n", flabel->sid );
+	printk(KERN_INFO "FILE FOWN_SID: %08x\n", flabel->fown_sid );
+	printk(KERN_INFO "FILE FLABEL ADDR: 0x%08x\n", &flabel );
+	printk(KERN_INFO "FILE ALLOC SECURITY END \n");
+	*/
+
+
+	struct file_security_label *flabel;
+
+	flabel = kmem_cache_zalloc(sel_file_cache, GFP_NOFS);
+	if (!flabel)
+        	return -ENOMEM;
+
+	mutex_init(&flabel->lock);
+        INIT_LIST_HEAD(&flabel->list);
+	flabel->file = file;
+	flabel->sclass = 0x8000;
+
+	flabel->a_flags = APPCL_AUTO_INHERIT;
+	flabel->a_count = 1;
+	flabel->a_owner_mask = 2;
+	flabel->a_group_mask = 2;
+	flabel->a_other_mask = 4;
+
+	file->f_security = flabel;
+
+	//printk(KERN_INFO "FILE FILE ADDR: 0x%08x\n", &file);
+	//printk(KERN_INFO "FILE SID: %08x\n", flabel->sid );
+	//printk(KERN_INFO "FILE SCLASS: %08x\n", flabel->sclass );
+	//printk(KERN_INFO "FILE FLABEL ADDR: 0x%08x\n", &flabel );
+	//printk(KERN_INFO "FILE ALLOC SECURITY END \n");
+
 	return 0;
 }
 
+static int appcl_lsm_file_alloc_security(struct file *file)
+{
+	return file_alloc_security(file);
+	return 0;
+}
+
+static void file_free_rcu(struct rcu_head *head)
+{
+         struct file_security_label *flabel;
+
+         flabel = container_of(head, struct file_security_label, rcu);
+         kmem_cache_free(sel_file_cache, flabel);
+	 return;
+}
+
+static void file_free_security(struct file *file)
+{
+
+	//printk(KERN_INFO "FILE FREE SECURITY START\n");
+	struct file_security_label *flabel = file->f_security;
+
+	if (!list_empty_careful(&flabel->list))
+                 list_del_init(&flabel->list);
+
+	call_rcu(&flabel->rcu, file_free_rcu);
+	//printk(KERN_INFO "FILE FREE SECURITY START\n");
+
+	return;
+}
 
 static void appcl_lsm_file_free_security(struct file *file)
 {
-	//printk(KERN_ALERT "FILE FREE SECURITY START\n");
-
-	//printk(KERN_ALERT "FILE FREE SECURITY START\n");
+	file_free_security(file);
 	return;
 }
 
@@ -372,6 +594,74 @@ static int appcl_lsm_file_receive(struct file *file)
 
 static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 {
+
+	//printk(KERN_INFO "FILE OPEN START \n");
+	struct file_security_label *flabel;
+	struct inode_security_label *ilabel;
+
+	struct inode *inode = file_inode(file);
+	if (!inode)
+		printk(KERN_ALERT "BOO INODE \n");
+
+	flabel = file->f_security;
+	if (!flabel)
+		printk(KERN_ALERT "BOO FLABEL \n");
+
+	ilabel = inode->i_security;
+	if (!ilabel)
+		printk(KERN_ALERT "BOO ILABEL \n");
+
+	char *tmp;
+	char *fpath_name;
+	struct path *fpath;
+
+	//spin_lock(&file->f_lock);
+	fpath = &file->f_path;
+	path_get(fpath);
+	//spin_unlock(&file->f_lock);
+
+	tmp = (char *)__get_free_page(GFP_TEMPORARY);
+
+	if (!tmp) {
+		path_put(fpath);
+		return -ENOMEM;
+	}
+
+	fpath_name = d_path(fpath, tmp, PAGE_SIZE);
+	path_put(fpath);
+
+	if (IS_ERR(fpath_name)) {
+		free_page((unsigned long) tmp);
+		return PTR_ERR(fpath_name);
+	}
+	/*
+	char *check_name = "/bin/nano";
+
+	if ((strcmp(check_name, fpath_name))) {
+		printk(KERN_ALERT "PATH NAME %s \n", fpath_name);
+	}
+	*/
+	/*
+	 *
+	 *
+	 * fpath_name contains path of current file
+	 *
+	 *
+	 */
+
+	free_page((unsigned long) tmp);
+
+	//printk(KERN_INFO "file_open FILE ADDR: 0x%08x\n", &file);
+	//printk(KERN_INFO "file_open FLABEL ADDR: 0x%08x\n", &flabel);
+	//printk(KERN_INFO "file_open INODE ADDR: 0x%08x\n", &inode);
+	//printk(KERN_INFO "file_open ILABEL ADDR: 0x%08x\n", &ilabel);
+	//printk(KERN_INFO "file_open INODE FLAGS: %08x\n", ilabel->a_flags );
+	//printk(KERN_INFO "file_open INODE COUNT: %08x\n", ilabel->a_count );
+	//printk(KERN_INFO "file_open INODE OWNER MASK: %08x\n", ilabel->a_owner_mask );
+	//printk(KERN_INFO "*\n*\n*\n*\n*\n");
+	//printk(KERN_INFO "FILE OPEN END \n");
+	//printk(KERN_ALERT "YAY \n");
+
 	return 0;
 }
 
@@ -387,21 +677,62 @@ static void appcl_lsm_task_free(struct task_struct *task)
 
 static int appcl_lsm_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 {
+	/*
+	struct task_cred_attr *credattr;
+
+        credattr = kzalloc(sizeof(struct task_cred_attr), gfp);
+        if (!credattr)
+                return -ENOMEM;
+
+        cred->security = credattr;
+	printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &credattr);
+	printk(KERN_INFO "AppCL LSM: cred_alloc_blank end ... \n");
+	*/
 	return 0;
 }
 
 static void appcl_lsm_cred_free(struct cred *cred)
 {
+	/*
+	struct task_cred_attr *credattr = cred->security;
+
+        cred->security = (void *) 0x7UL;
+        kfree(credattr);
+	*/
 	return;
 }
 
 static int appcl_lsm_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
-	return 0;
+	/*
+	const struct task_cred_attr *old_attr;
+        struct task_cred_attr *credattr;
+
+        old_attr = old->security;
+
+        credattr = kmemdup(old_attr, sizeof(struct task_cred_attr), gfp);
+        if (!credattr)
+                return -ENOMEM;
+
+        new->security = credattr;
+
+	printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &credattr);
+	printk(KERN_INFO "AppCL LSM: cred_prepare ... \n");
+	*/
+        return 0;
 }
 
 static void appcl_lsm_cred_transfer(struct cred *new, const struct cred *old)
 {
+	/*
+	const struct task_cred_attr *old_attr = old->security;
+        struct task_cred_attr *credattr = new->security;
+
+        *credattr = *old_attr;
+
+	printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &credattr);
+	printk(KERN_INFO "AppCL LSM: cred_transfer end ... \n");
+	*/
 	return;
 }
 
@@ -482,9 +813,17 @@ static struct security_hook_list appcl_hooks[] = {
 static int __init appcl_lsm_init(void)
 {
 	printk(KERN_ALERT "AppCL - LSM Security Module Initialising ... \n");
+
+	/* Initital task security attributes */
+	/* init_task_cred_attr(); */
+
 	sel_inode_cache = kmem_cache_create("appcl_lsm_inode_security",
-                                	sizeof(struct inode_security_struct),
+                                	sizeof(struct inode_security_label),
                                              0, SLAB_PANIC, NULL);
+
+	sel_file_cache = kmem_cache_create("appcl_lsm_file_security",
+				        sizeof(struct file_security_label),
+				        	0, SLAB_PANIC, NULL);
 
 	security_add_hooks(appcl_hooks, ARRAY_SIZE(appcl_hooks));
 	printk(KERN_ALERT "AppCL - LSM Security Module Successfully Initialised\n");
