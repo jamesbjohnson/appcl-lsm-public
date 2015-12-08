@@ -694,6 +694,9 @@ static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 	 */
 
 	return 0;
+error:
+	printk(KERN_ALERT "*FILE OPEN ERROR OUT* \n");
+	return 0;
 }
 
 static int appcl_lsm_task_create(unsigned long clone_flags)
