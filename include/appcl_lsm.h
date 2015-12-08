@@ -1,5 +1,5 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
-AppCL - LSM appcl_lsm.c
+AppCL - LSM appcl_lsm.h
 
 Linux kernel security module to implement program based access control mechanisms
 
@@ -83,15 +83,6 @@ Linux kernel security module to implement program based access control mechanism
 #define current_cap()           (current_cred_xxx(cap_effective))
 #define current_user()          (current_cred_xxx(user))
 #define current_security()      (current_cred_xxx(security))
-
-struct task_cred_attr {
-        u32 osid;               /* SID prior to last execve */
-        u32 sid;                /* current SID */
-        u32 exec_sid;           /* exec SID */
-        u32 create_sid;         /* fscreate SID */
-        u32 keycreate_sid;      /* keycreate SID */
-        u32 sockcreate_sid;     /* fscreate SID */
-};
 
 /* APPCL_to_text flags */
 #define APPCL_TEXT_LONG		1
@@ -236,6 +227,12 @@ struct richace {
 	for ((_ace) = (_isl)->a_entries + (_isl)->a_count - 1; \
 	     (_ace) != (_isl)->a_entries - 1; \
 	     (_ace)--)
+
+struct task_cred_attr {
+        const char *tpath_name;
+        const struct path *tpath;
+        u16 tclass;
+};
 
 struct file_security_label {
           struct file *file;    /* back pointer to file object */
