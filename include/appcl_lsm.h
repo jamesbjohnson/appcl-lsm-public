@@ -66,7 +66,7 @@ Linux kernel security module to implement program based access control mechanism
 #include <linux/cred.h>
 #include <linux/fs.h>
 #include <stdbool.h>
-
+/*
 #define current_cred_xxx(xxx)                   \
 ({                                              \
         current_cred()->xxx;                    \
@@ -83,6 +83,12 @@ Linux kernel security module to implement program based access control mechanism
 #define current_cap()           (current_cred_xxx(cap_effective))
 #define current_user()          (current_cred_xxx(user))
 #define current_security()      (current_cred_xxx(security))
+*/
+#define FILE__READ     0
+#define FILE__APPEND   0
+#define FILE__WRITE    0
+#define FILE__IOCTL    1
+
 
 /* APPCL_to_text flags */
 #define APPCL_TEXT_LONG		1
@@ -191,19 +197,12 @@ Linux kernel security module to implement program based access control mechanism
 	RICHACE_SYNCHRONIZE )
 
 struct inode_security_label {
+          const char *bprm_pathname;
           struct inode *inode;    /* back pointer to inode object */
           union {
                   struct list_head list;  /* list of inode_security_struct */
                   struct rcu_head rcu;    /* for freeing the inode_security_struct */
           };
-
-          unsigned char	a_flags;
-          unsigned short a_count;
-	  unsigned int a_owner_mask;
-	  unsigned int a_group_mask;
-	  unsigned int a_other_mask;
-	  //struct richace a_entries[0];
-
           u16 sclass;             /* security class of this object */
           struct mutex lock;
 };
@@ -230,8 +229,10 @@ struct richace {
 
 struct task_cred_attr {
         const char *tpath_name;
-        const struct path *tpath;
+        //const struct path *tpath;
         u16 tclass;
+        u32 sid;
+        u32 exec_sid;
 };
 
 struct file_security_label {

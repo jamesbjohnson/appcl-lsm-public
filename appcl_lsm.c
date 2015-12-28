@@ -75,8 +75,10 @@ Linux kernel security module to implement program based access control mechanism
 #include <linux/path.h>
 #include <linux/fdtable.h>
 #include <linux/binfmts.h>
+#include <linux/time.h>
 
 #include "include/appcl_lsm.h"
+#include "include/audit.h"
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
@@ -89,34 +91,36 @@ Linux kernel security module to implement program based access control mechanism
 static struct kmem_cache *sel_inode_cache;
 static struct kmem_cache *sel_file_cache;
 
-static void init_task_cred_attr(void) {
+static void init_task_audit_data(void) {
 
-	printk(KERN_ALERT "AppCL LSM: init_task_cred_attr Initialising ... \n");
+	printk(KERN_ALERT "AppCL LSM: init_task_audit_data Initialising ... \n");
 
-	struct cred *cred = (struct cred *) current->real_cred;
-        struct task_cred_attr *credattr;
-
-        credattr = kzalloc(sizeof(struct task_cred_attr), GFP_KERNEL);
-        if (!credattr)
+	//struct cred *cred = (struct cred *) current->real_cred;
+	struct cred *cred;
+        struct task_audit_data *newtd;
+	cred = get_current_cred();
+        newtd = kzalloc(sizeof(struct task_audit_data), GFP_KERNEL);
+        if (!newtd) {
+                put_cred(cred);
                 panic("AppCL LSM:  Failed to initialise initial task.\n");
+        }
 
-        credattr->tpath_name = NULL;
-	credattr->tclass = 0x8000;
-        cred->security = credattr;
+        newtd->sid = 0x00000001;
+	newtd->tclass = 0x8000;
+	newtd->bprm_pathname = "init-task";
+        cred->security = newtd;
 
-	printk(KERN_ALERT "CRED ATTR ADDR: 0x%08x\n", &credattr);
-	printk(KERN_ALERT "CRED ATTR TPATH_NAME: %s\n", credattr->tpath_name );
-	printk(KERN_ALERT "CRED ATTR TCLASS: %04x\n", credattr->tclass );
-	printk(KERN_ALERT "AppCL LSM: init_task_cred_attr Initialised ... \n");
+	put_cred(cred);
+	printk(KERN_ALERT "AppCL LSM: init_task_audit_data Initialised ... \n");
 	return;
 }
 
 /*
 static inline u32 current_sid(void)
 {
-        const struct task_cred_attr *credattr = current_security();
+        const struct task_audit_data *newtd = current_security();
 
-        return credattr->sid;
+        return newtd->sid;
 }
 */
 /*
@@ -134,106 +138,106 @@ static int appcl_lsm_capable(const struct cred *cred, struct user_namespace *ns,
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+static inline u32 cred_sid(const struct cred *cred)
+{
+	const struct task_audit_data *newtd;
+	newtd = cred->security;
+	return newtd->sid;
+}
+
+static inline u32 file_to_av(struct file *file)
+{
+	u32 av = 0;
+
+	if (file->f_mode & FMODE_READ)
+		av |= FILE__READ;
+	if (file->f_mode & FMODE_WRITE) {
+		if (file->f_flags & O_APPEND)
+			av |= FILE__APPEND;
+		else
+			av |= FILE__WRITE;
+	}
+	if (!av)
+		av = FILE__IOCTL;
+
+	return av;
+}
+
+static inline u32 open_file_to_av(struct file *file)
+{
+	u32 av = file_to_av(file);
+	return av;
+}
+
 static int appcl_lsm_bprm_set_creds(struct linux_binprm *bprm)
 {
-	const struct task_cred_attr *old_cred;
-        struct task_cred_attr *credattr;
-	struct inode_security_label *ilabel;
-	struct inode *inode = file_inode(bprm->file);
-
-	old_cred = current_security();
-	credattr = bprm->cred->security;
-	ilabel = inode->i_security;
-
-	//credattr->tpath_name = NULL;
-
+	struct task_audit_data *newtd;
+        struct inode *inode = file_inode(bprm->file);
+        struct path *fpath;
 	char *tmp;
 	char *fpath_name;
-	struct path *fpath;
 
-	spin_lock(&file->f_lock);
+        /*
+         *
+         * check if creds are already prepared
+         * return if true
+         *
+         */
+
+	if (bprm->cred_prepared)
+		return 0;
+
+	newtd = bprm->cred->security;
+
+	spin_lock(&bprm->file->f_lock);
 	fpath = &bprm->file->f_path;
-	credattr->tpath = fpath;
 	path_get(fpath);
-	spin_unlock(&file->f_lock);
+	spin_unlock(&bprm->file->f_lock);
 
-	tmp = (char *)__get_free_page(GFP_TEMPORARY);
-
+        tmp = (char *)__get_free_page(GFP_TEMPORARY);
 	if (!tmp) {
 		path_put(fpath);
 		return -ENOMEM;
 	}
 
+        /*
+         *
+         * retrieve reference to binprm file path
+         * stored in fpath_name
+         *
+         */
+
 	fpath_name = d_path(fpath, tmp, PAGE_SIZE);
 	path_put(fpath);
 
-	if (IS_ERR(fpath_name)) {
-		free_page((unsigned long) tmp);
-		return PTR_ERR(fpath_name);
-	}
+        /*
+         *
+         * check for error in retrieving file path
+         * store binprm filename attribute if pathname not found
+         *
+         */
 
-	//char *check_name = "/bin/nano";
+	if (!fpath_name || IS_ERR(fpath_name))
+		fpath_name = bprm->filename;
 
-	/*
-	if ((strcmp(check_name, fpath_name))) {
-		printk(KERN_ALERT "SET CREDS BPRM PATH NAME %s \n", fpath_name);
-	}
-	*/
-	credattr->tpath_name = fpath_name;
-	credattr->tclass = 0x4000;
+        if (!fpath_name)
+		fpath_name = bprm->interp;
 
-	if (credattr->tpath_name)
-		printk(KERN_INFO "SET CREDS CREDATTR PATH NAME %s \n", credattr->tpath_name);
+        /*
+         *
+         * newtd: cred security label (task_audit_data)
+         *
+         */
 
-	/*
-	 *
-	 *
-	 * fpath_name contains path of current file
-	 *
-	 *
-	 */
+        newtd->sid = 0x00000008;
+        newtd->tclass = 0x4000;
+        newtd->u.inode = inode;
+        newtd->bprm_pathname = fpath_name;
 
-	free_page((unsigned long) tmp);
-	/*
-	//printk(KERN_INFO "AppCL LSM bprm_set_creds security hook\n");
-	if (set_cred_count < 20)
-		printk(KERN_INFO "BPRM SET CREDS START \n");
-
-
-
-        old_cred = current_security();
-
-         Default to the current task SID.
-        credattr->sid = old_cred->sid;
-        credattr->osid = old_cred->sid;
-
-         Reset fs, key, and sock SIDs on execve.
-        credattr->create_sid = 0;
-        credattr->keycreate_sid = 0;
-        credattr->sockcreate_sid = 0;
-
-        if (old_cred->exec_sid) {
-                credattr->sid = old_cred->exec_sid;
-                  Reset exec SID on execve.
-                credattr->exec_sid = 0;
-        }
-
-	if (set_cred_count < 20) {
-		printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &credattr);
-		printk(KERN_INFO "CRED ATTR SID: %08x\n", credattr->sid );
-		printk(KERN_INFO "CRED ATTR OSID: %08x\n", credattr->osid );
-		printk(KERN_INFO "BPRM SET CREDS END \n");
-	}
-
-	set_cred_count++; */
-	return 0;
+        free_page((unsigned long) tmp);
+        return 0;
 }
-/*
-static int appcl_lsm_bprm_check(struct linux_binprm *bprm)
-{
-	return 0;
-}
-*/
+
 static void appcl_lsm_bprm_committing_creds(struct linux_binprm *bprm)
 {
 	return;
@@ -261,9 +265,10 @@ static int appcl_lsm_bprm_secureexec(struct linux_binprm *bprm)
 static int inode_alloc_security(struct inode *inode)
 {
 	//printk(KERN_INFO "INODE ALLOC SECURITY START \n");
-
+	const struct task_audit_data *current_td;
 	struct inode_security_label *ilabel;
-	//kuid_t sid = current_suid();
+
+	current_td = current_security();
 
 	ilabel = kmem_cache_zalloc(sel_inode_cache, GFP_NOFS);
 	if (!ilabel)
@@ -273,22 +278,10 @@ static int inode_alloc_security(struct inode *inode)
         INIT_LIST_HEAD(&ilabel->list);
 	ilabel->inode = inode;
 	ilabel->sclass = 0x4000;
-
-	ilabel->a_flags = APPCL_AUTO_INHERIT;
-	ilabel->a_count = 1;
-	ilabel->a_owner_mask = 1;
-	ilabel->a_group_mask = 1;
-	ilabel->a_other_mask = 2;
+	//ilabel->binprm_pathname = current_td->u.binprm_pathname;
 
 	inode->i_security = ilabel;
-
-	//printk(KERN_INFO "INODE INODE ADDR: 0x%08x\n", &inode);
-	//printk(KERN_INFO "INODE FLAGS: %08x\n", ilabel->a_flags );
-	//printk(KERN_INFO "INODE COUNT: %08x\n", ilabel->a_count );
-	//printk(KERN_INFO "INODE OWNER MASK: %08x\n", ilabel->a_owner_mask );
-	//printk(KERN_INFO "INODE ILABEL ADDR: 0x%08x\n", &ilabel );
-	//printk(KERN_INFO "INODE ALLOC SECURITY END \n");
-
+	//printk(KERN_INFO "INODE ALLOC BINPRM_PATHNAME: %s \n", ilabel->binprm_pathname);
 	return 0;
 }
 
@@ -578,76 +571,82 @@ static int appcl_lsm_file_receive(struct file *file)
 	return 0;
 }
 
+int inode_has_perm(const struct cred *cred, struct inode *inode,
+				u32 perms, struct common_audit_data *adp)
+{
+	struct inode_security_label *ilabel;
+	u32 sid;
+
+	validate_creds(cred);
+
+	if (unlikely(IS_PRIVATE(inode)))
+		return 0;
+
+	sid = cred_sid(cred);
+	ilabel = inode->i_security;
+
+	return 0;
+}
+
+inline int file_path_has_perm(const struct cred *cred,
+					struct file *file, u32 av)
+{
+	struct common_audit_data ad;
+	ad.type = LSM_AUDIT_DATA_PATH;
+	ad.u.path = file->f_path;
+	return inode_has_perm(cred, file_inode(file), av, &ad);
+}
+
 static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 {
-	const struct task_cred_attr *credattr;
-	const char *tpath_name;
-	char *fpath_name;
-	struct file_security_label *flabel;
-	struct inode *inode = file_inode(file);
-	struct inode_security_label *ilabel;
-	int file_path_set = 0;
-	int task_f_path = 0;
+	const struct cred *currentcred; /* current cred */
+	const struct task_audit_data *current_td; /* current task data */
+	const struct task_audit_data *filetd; /* file task data */
+	const char *current_pathname = NULL; /* current cred pathname */
+	char *fpath_name = NULL;
+	const char *tmp_name = NULL;
+	//struct inode *inode = file_inode(file);
+	//struct inode_security_label *ilabel;
 
-	credattr = cred->security;
-	if (!credattr)
-		printk(KERN_ALERT "NO CRED SECURITY \n");
-	else
-		tpath_name = credattr->tpath_name;
+	currentcred = get_current_cred();
+	current_td = currentcred->security;
+	current_pathname = current_td->bprm_pathname;
+
+	if (current_pathname)
+		goto out;
+
 	/*
 	 *
-	 * If no cred path (tpath_name) exists,
-	 * attempt to retrieve from 'tpath' (fpath_name)
+	 * If no current_pathname can be found from current cred,
+	 * attempt to retrieve file cred pathname
 	 *
 	 */
-	if (!tpath_name) {
-		printk(KERN_INFO "NO TPATH_NAME \n");
 
-		char *tmp;
-		const struct path *tpath;
+	filetd = cred->security;
+	if (filetd)
+		current_pathname = filetd->bprm_pathname;
 
-		spin_lock(&file->f_lock);
-		tpath = &credattr->tpath;
-		path_get(tpath);
-		tmp = (char *)__get_free_page(GFP_TEMPORARY);
-		spin_unlock(&file->f_lock);
-
-		if (!tmp) {
-			path_put(tpath);
-			return -ENOMEM;
-		}
-
-		tpath_name = d_path(tpath, tmp, PAGE_SIZE);
-		path_put(tpath);
-
-		if (IS_ERR(tpath_name)) {
-			free_page((unsigned long) tmp);
-			goto error;
-			//return PTR_ERR(tpath_name);
-		}
-		task_f_path = 1;
-		free_page((unsigned long) tmp);
-	}
 	/*
 	 *
-	 * If no tpath_name can be found,
+	 * If no file cred pathname can be found,
 	 * attempt to retrieve file path name (fpath_name)
 	 *
 	 */
-	if (!tpath_name) {
-		printk(KERN_INFO "NO TPATH_NAME \n");
 
-		char *tmp;
+	if (current_pathname) {
+		goto out;
+	} else {
 		struct path *fpath;
+		char *tmp;
 
 		spin_lock(&file->f_lock);
 		fpath = &file->f_path;
 		path_get(fpath);
 		spin_unlock(&file->f_lock);
 
-		tmp = (char *)__get_free_page(GFP_TEMPORARY);
-
+                tmp = (char *)__get_free_page(GFP_TEMPORARY);
 		if (!tmp) {
+			put_cred(currentcred);
 			path_put(fpath);
 			return -ENOMEM;
 		}
@@ -656,47 +655,35 @@ static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 		path_put(fpath);
 
 		if (IS_ERR(fpath_name)) {
+			put_cred(currentcred);
 			free_page((unsigned long) tmp);
-			goto error;
-			//return PTR_ERR(fpath_name);
-		}
-
-		file_path_set = 1;
-		free_page((unsigned long) tmp);
+			return PTR_ERR(fpath_name);
+		} else {
+                        current_pathname = fpath_name;
+                        free_page((unsigned long) tmp);
+                }
 	}
 
-	if (task_f_path)
-		printk(KERN_ALERT "*FILE OPEN TASK F_PATH SET*  \n");
+	goto out;
 
-	if (file_path_set)
-		printk(KERN_ALERT "FILE OPEN FILE PATH SET: %s \n", fpath_name);
 	/*
-	if (task_f_path)
-		printk(KERN_ALERT "FILE OPEN TASK PATH SET: %s \n", tpath_name);
-	*/
 	if (!inode)
 		printk(KERN_ALERT "NO INODE \n");
-
-	flabel = file->f_security;
-	if (!flabel)
-		printk(KERN_ALERT "NO FILE LABEL \n");
 
 	ilabel = inode->i_security;
 	if (!ilabel)
 		printk(KERN_ALERT "NO INODE LABEL \n");
+	*/
 
-	/*
-	 *
-	 * tpath_name contains current process application path.
-	 * If tpath_name not set - fpath_name contains path of current file
-	 *
-	 *
-	 */
+out:
+        put_cred(currentcred);
+        spin_lock(&file->f_lock);
+        tmp_name = current_pathname;
+        printk(KERN_ALERT "FILE OPEN: CURRENT PATHNAME SET: %s \n", tmp_name);
+        spin_unlock(&file->f_lock);
+	//return file_path_has_perm(cred, file, open_file_to_av(file));
+	return 0;
 
-	return 0;
-error:
-	printk(KERN_ALERT "*FILE OPEN ERROR OUT* \n");
-	return 0;
 }
 
 static int appcl_lsm_task_create(unsigned long clone_flags)
@@ -712,15 +699,15 @@ static void appcl_lsm_task_free(struct task_struct *task)
 static int appcl_lsm_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 {
 
-	struct task_cred_attr *credattr;
+	struct task_audit_data *newtd;
 
-        credattr = kzalloc(sizeof(struct task_cred_attr), gfp);
-        if (!credattr)
+        newtd = kzalloc(sizeof(struct task_audit_data), gfp);
+        if (!newtd)
                 return -ENOMEM;
 
-        cred->security = credattr;
-	//printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &credattr);
-	printk(KERN_INFO "AppCL LSM: cred_alloc_blank ... \n");
+        cred->security = newtd;
+	//printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &newtd);
+	//printk(KERN_INFO "AppCL LSM: cred_alloc_blank ... \n");
 
 	return 0;
 }
@@ -728,10 +715,10 @@ static int appcl_lsm_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 static void appcl_lsm_cred_free(struct cred *cred)
 {
 
-	struct task_cred_attr *credattr = cred->security;
+	struct task_audit_data *newtd = cred->security;
 
         cred->security = (void *) 0x7UL;
-        kfree(credattr);
+        kfree(newtd);
 
 	return;
 }
@@ -739,18 +726,18 @@ static void appcl_lsm_cred_free(struct cred *cred)
 static int appcl_lsm_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
 
-	const struct task_cred_attr *old_attr;
-        struct task_cred_attr *credattr;
+	const struct task_audit_data *td;
+        struct task_audit_data *newtd;
 
-        old_attr = old->security;
+        td = old->security;
 
-        credattr = kmemdup(old_attr, sizeof(struct task_cred_attr), gfp);
-        if (!credattr)
+        newtd = kmemdup(td, sizeof(struct task_audit_data), gfp);
+        if (!newtd)
                 return -ENOMEM;
 
-        new->security = credattr;
+        new->security = newtd;
 
-	//printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &credattr);
+	//printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &newtd);
 	//printk(KERN_INFO "AppCL LSM: cred_prepare ... \n");
 
         return 0;
@@ -759,13 +746,13 @@ static int appcl_lsm_cred_prepare(struct cred *new, const struct cred *old, gfp_
 static void appcl_lsm_cred_transfer(struct cred *new, const struct cred *old)
 {
 
-	const struct task_cred_attr *old_attr = old->security;
-        struct task_cred_attr *credattr = new->security;
+	const struct task_audit_data *td = old->security;
+        struct task_audit_data *newtd = new->security;
 
-        *credattr = *old_attr;
+        *newtd = *td;
 
-	//printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &credattr);
-	printk(KERN_INFO "AppCL LSM: cred_transfer ... \n");
+	//printk(KERN_INFO "CRED ATTR ADDR: 0x%08x\n", &newtd);
+	//printk(KERN_INFO "AppCL LSM: cred_transfer ... \n");
 
 	return;
 }
@@ -849,7 +836,7 @@ static int __init appcl_lsm_init(void)
 	printk(KERN_ALERT "AppCL - LSM Security Module Initialising ... \n");
 
 	/* Initital task security attributes */
-	init_task_cred_attr();
+	init_task_audit_data();
 
 	sel_inode_cache = kmem_cache_create("appcl_lsm_inode_security",
                                 	sizeof(struct inode_security_label),
