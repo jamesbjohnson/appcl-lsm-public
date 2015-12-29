@@ -171,73 +171,65 @@ static inline u32 open_file_to_av(struct file *file)
 
 static int appcl_lsm_bprm_set_creds(struct linux_binprm *bprm)
 {
-	struct task_audit_data *newtd;
+	struct task_audit_data *newtd; /* cred security label */
         struct inode *inode = file_inode(bprm->file);
+        char *fpath_name; /* temp path name */
+        char *cred_path; /* saved path name */
+        char *tmp;
         struct path *fpath;
-	char *tmp;
-	char *fpath_name;
-
-        /*
-         *
-         * check if creds are already prepared
-         * return if true
-         *
-         */
 
 	if (bprm->cred_prepared)
 		return 0;
 
 	newtd = bprm->cred->security;
 
-	spin_lock(&bprm->file->f_lock);
-	fpath = &bprm->file->f_path;
-	path_get(fpath);
-	spin_unlock(&bprm->file->f_lock);
+        if ((fpath_name == NULL) || (strlen(fpath_name) < 2)) {
+	        spin_lock(&bprm->file->f_lock);
+	        fpath = &bprm->file->f_path;
+	        path_get(fpath);
+	        spin_unlock(&bprm->file->f_lock);
 
-        tmp = (char *)__get_free_page(GFP_TEMPORARY);
-	if (!tmp) {
-		path_put(fpath);
-		return -ENOMEM;
-	}
+                tmp = (char *)__get_free_page(GFP_TEMPORARY);
+	        if (!tmp) {
+		        path_put(fpath);
+		        return -ENOMEM;
+	        }
 
-        /*
-         *
-         * retrieve reference to binprm file path
-         * stored in fpath_name
-         *
-         */
+	        fpath_name = d_path(fpath, tmp, PAGE_SIZE);
+	        path_put(fpath);
 
-	fpath_name = d_path(fpath, tmp, PAGE_SIZE);
-	path_put(fpath);
+	        if (IS_ERR(fpath_name))
+                        fpath_name = "BPRM_PATH-IS-ERR";
+        }
 
-        /*
-         *
-         * check for error in retrieving file path
-         * store binprm filename attribute if pathname not found
-         *
-         */
+        if ((fpath_name == NULL))
+                fpath_name = bprm->filename;
+                //fpath_name = bprm->interp;
 
-	if (!fpath_name || IS_ERR(fpath_name))
-		fpath_name = bprm->filename;
-
-        if (!fpath_name)
-		fpath_name = bprm->interp;
-
-        /*
-         *
-         * newtd: cred security label (task_audit_data)
-         *
-         */
+        if (fpath_name == NULL)
+                cred_path = "path-null";
+        else if (strlen(fpath_name) < 1)
+                cred_path = "path-not-found";
+        else
+                cred_path = fpath_name;
 
         newtd->sid = 0x00000008;
         newtd->tclass = 0x4000;
+        newtd->bprm_pathname = cred_path;
         newtd->u.inode = inode;
-        newtd->bprm_pathname = fpath_name;
+
+        bprm->cred->security = newtd;
 
         free_page((unsigned long) tmp);
         return 0;
 }
 
+/*
+static int appcl_lsm_bprm_check(struct linux_binprm *bprm)
+{
+	return 0;
+}
+*/
 static void appcl_lsm_bprm_committing_creds(struct linux_binprm *bprm)
 {
 	return;
@@ -301,7 +293,6 @@ static void inode_free_rcu(struct rcu_head *head)
 
 static void inode_free_security(struct inode *inode)
 {
-	//printk(KERN_INFO "INODE FREE SECURITY START \n");
 	struct inode_security_label *ilabel = inode->i_security;
 
 	if (!list_empty_careful(&ilabel->list))
@@ -309,7 +300,6 @@ static void inode_free_security(struct inode *inode)
 
 	call_rcu(&ilabel->rcu, inode_free_rcu);
 
-	//printk(KERN_INFO "INODE FREE SECURITY END \n");
 	return;
 }
 
@@ -602,40 +592,54 @@ static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 	const struct cred *currentcred; /* current cred */
 	const struct task_audit_data *current_td; /* current task data */
 	const struct task_audit_data *filetd; /* file task data */
-	const char *current_pathname = NULL; /* current cred pathname */
+	const char *current_pathname = NULL;
 	char *fpath_name = NULL;
-	const char *tmp_name = NULL;
 	//struct inode *inode = file_inode(file);
 	//struct inode_security_label *ilabel;
+        const char *test_ls = "/bin/ls";
+        const char *test_nano = "/bin/nano";
+        const char *test_cat = "/bin/cat";
+
+
+        int ret;
+        size_t buf = 128;
 
 	currentcred = get_current_cred();
 	current_td = currentcred->security;
 	current_pathname = current_td->bprm_pathname;
 
-	if (current_pathname)
+	if (strlen(current_pathname) > 1) {
+		//printk(KERN_ALERT "FILE OPEN: CURRENT PATHNAME SET: %s \n", current_pathname);
 		goto out;
+	}
 
 	/*
 	 *
-	 * If no current_pathname can be found from current cred,
-	 * attempt to retrieve file cred pathname
+	 * If no current_pathname can be found,
+	 * attempt to retrieve file cred path
 	 *
 	 */
 
-	filetd = cred->security;
-	if (filetd)
-		current_pathname = filetd->bprm_pathname;
+        if (current_pathname == NULL || strlen(current_pathname) < 1) {
+                filetd = cred->security;
+        	if (filetd)
+        		current_pathname = filetd->bprm_pathname;
+
+                if (strlen(current_pathname) > 1) {
+        		//printk(KERN_ALERT "FILE OPEN: *PATH NOT FOUND* TPATH SET: %s \n", current_pathname);
+        		goto out;
+                }
+        }
 
 	/*
 	 *
-	 * If no file cred pathname can be found,
+	 * If no current cred path can be found,
 	 * attempt to retrieve file path name (fpath_name)
 	 *
 	 */
 
-	if (current_pathname) {
-		goto out;
-	} else {
+        if (current_pathname == NULL || strlen(current_pathname) < 1) {
+                //printk(KERN_ALERT "Getting file path ...\n");
 		struct path *fpath;
 		char *tmp;
 
@@ -657,12 +661,17 @@ static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 		if (IS_ERR(fpath_name)) {
 			put_cred(currentcred);
 			free_page((unsigned long) tmp);
-			return PTR_ERR(fpath_name);
-		} else {
-                        current_pathname = fpath_name;
-                        free_page((unsigned long) tmp);
+			goto out;
+		}
+
+		current_pathname = fpath_name;
+                free_page((unsigned long) tmp);
+
+                if (strlen(current_pathname) > 1) {
+        		//printk(KERN_ALERT "FILE OPEN: ***FILE PATH SET***: %s \n", current_pathname);
+        		goto out;
                 }
-	}
+        }
 
 	goto out;
 
@@ -676,11 +685,20 @@ static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 	*/
 
 out:
-        put_cred(currentcred);
-        spin_lock(&file->f_lock);
-        tmp_name = current_pathname;
-        printk(KERN_ALERT "FILE OPEN: CURRENT PATHNAME SET: %s \n", tmp_name);
-        spin_unlock(&file->f_lock);
+
+        ret = strncmp(current_pathname, test_ls, buf);
+        if (ret == 0)
+                printk(KERN_ALERT "FILE OPEN: LS: TEST PATH SET: %s \n", current_pathname);
+
+        ret = strncmp(current_pathname, test_nano, buf);
+        if (ret == 0)
+                printk(KERN_ALERT "FILE OPEN: NANO: TEST PATH SET: %s \n", current_pathname);
+
+        ret = strncmp(current_pathname, test_cat, buf);
+        if (ret == 0)
+                printk(KERN_ALERT "FILE OPEN: CAT: TEST PATH SET: %s \n", current_pathname);
+
+	put_cred(currentcred);
 	//return file_path_has_perm(cred, file, open_file_to_av(file));
 	return 0;
 
