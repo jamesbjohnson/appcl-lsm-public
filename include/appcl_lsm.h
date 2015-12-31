@@ -66,29 +66,11 @@ Linux kernel security module to implement program based access control mechanism
 #include <linux/cred.h>
 #include <linux/fs.h>
 #include <stdbool.h>
-/*
-#define current_cred_xxx(xxx)                   \
-({                                              \
-        current_cred()->xxx;                    \
-})
 
-#define current_uid()           (current_cred_xxx(uid))
-#define current_gid()           (current_cred_xxx(gid))
-#define current_euid()          (current_cred_xxx(euid))
-#define current_egid()          (current_cred_xxx(egid))
-#define current_suid()          (current_cred_xxx(suid))
-#define current_sgid()          (current_cred_xxx(sgid))
-#define current_fsuid()         (current_cred_xxx(fsuid))
-#define current_fsgid()         (current_cred_xxx(fsgid))
-#define current_cap()           (current_cred_xxx(cap_effective))
-#define current_user()          (current_cred_xxx(user))
-#define current_security()      (current_cred_xxx(security))
-*/
-#define FILE__READ     0
-#define FILE__APPEND   0
-#define FILE__WRITE    0
-#define FILE__IOCTL    1
-
+#define FILE__READ     1
+#define FILE__APPEND   2
+#define FILE__WRITE    4
+#define FILE__IOCTL    8
 
 /* APPCL_to_text flags */
 #define APPCL_TEXT_LONG		1
@@ -197,7 +179,7 @@ Linux kernel security module to implement program based access control mechanism
 	RICHACE_SYNCHRONIZE )
 
 struct inode_security_label {
-          const char *bprm_pathname;
+          const char *inode_sec_pathname;
           struct inode *inode;    /* back pointer to inode object */
           union {
                   struct list_head list;  /* list of inode_security_struct */
@@ -227,14 +209,6 @@ struct richace {
 	     (_ace) != (_isl)->a_entries - 1; \
 	     (_ace)--)
 
-struct task_cred_attr {
-        const char *tpath_name;
-        //const struct path *tpath;
-        u16 tclass;
-        u32 sid;
-        u32 exec_sid;
-};
-
 struct file_security_label {
           struct file *file;    /* back pointer to file object */
           union {
@@ -251,15 +225,6 @@ struct file_security_label {
           u16 sclass;             /* security class of this object */
           struct mutex lock;
 };
-
-/*
-struct file_security_label {
-        u32 sid;
-        u32 fown_sid;
-        u32 isid;
-        u32 pseqno;
-};
-*/
 
 enum path_flags {
 	PATH_IS_DIR = 0x1,	/* Path is  directory */

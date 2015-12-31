@@ -183,33 +183,27 @@ static int appcl_lsm_bprm_set_creds(struct linux_binprm *bprm)
 
 	newtd = bprm->cred->security;
 
-        if ((fpath_name == NULL) || (strlen(fpath_name) < 2)) {
-	        spin_lock(&bprm->file->f_lock);
-	        fpath = &bprm->file->f_path;
-	        path_get(fpath);
-	        spin_unlock(&bprm->file->f_lock);
+	spin_lock(&bprm->file->f_lock);
+	fpath = &bprm->file->f_path;
+        path_get(fpath);
+	spin_unlock(&bprm->file->f_lock);
 
-                tmp = (char *)__get_free_page(GFP_TEMPORARY);
-	        if (!tmp) {
-		        path_put(fpath);
-		        return -ENOMEM;
-	        }
-
-	        fpath_name = d_path(fpath, tmp, PAGE_SIZE);
+        tmp = (char *)__get_free_page(GFP_TEMPORARY);
+        if (!tmp) {
 	        path_put(fpath);
+	        return -ENOMEM;
+	}
 
-	        if (IS_ERR(fpath_name))
-                        fpath_name = "BPRM_PATH-IS-ERR";
-        }
+	fpath_name = d_path(fpath, tmp, PAGE_SIZE);
+	path_put(fpath);
 
-        if ((fpath_name == NULL))
+        if ((IS_ERR(fpath_name)) || (fpath_name == NULL) || (strlen(fpath_name) < 1))
                 fpath_name = bprm->filename;
-                //fpath_name = bprm->interp;
 
         if (fpath_name == NULL)
-                cred_path = "path-null";
+                cred_path = "task_audit-path-null";
         else if (strlen(fpath_name) < 1)
-                cred_path = "path-not-found";
+                cred_path = "task_audit-path-not-found";
         else
                 cred_path = fpath_name;
 
@@ -249,18 +243,14 @@ static int appcl_lsm_bprm_secureexec(struct linux_binprm *bprm)
  *
  *
  * INODE SECURITY HOOKS
- * With thanks to SELinux
  *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 static int inode_alloc_security(struct inode *inode)
 {
-	//printk(KERN_INFO "INODE ALLOC SECURITY START \n");
-	const struct task_audit_data *current_td;
 	struct inode_security_label *ilabel;
-
-	current_td = current_security();
+        const char *test_cat = "/bin/cat";              /*TEST*   /bin/cat   *TEST*/
 
 	ilabel = kmem_cache_zalloc(sel_inode_cache, GFP_NOFS);
 	if (!ilabel)
@@ -270,10 +260,9 @@ static int inode_alloc_security(struct inode *inode)
         INIT_LIST_HEAD(&ilabel->list);
 	ilabel->inode = inode;
 	ilabel->sclass = 0x4000;
-	//ilabel->binprm_pathname = current_td->u.binprm_pathname;
+        ilabel->inode_sec_pathname = test_cat;
 
 	inode->i_security = ilabel;
-	//printk(KERN_INFO "INODE ALLOC BINPRM_PATHNAME: %s \n", ilabel->binprm_pathname);
 	return 0;
 }
 
@@ -594,24 +583,34 @@ static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 	const struct task_audit_data *filetd; /* file task data */
 	const char *current_pathname = NULL;
 	char *fpath_name = NULL;
-	//struct inode *inode = file_inode(file);
-	//struct inode_security_label *ilabel;
-        const char *test_ls = "/bin/ls";
-        const char *test_nano = "/bin/nano";
-        const char *test_cat = "/bin/cat";
 
+	struct inode *inode = file_inode(file);
+	struct inode_security_label *ilabel;
+        const char *inode_sec_pathname = NULL;
 
-        int ret;
+        if (!inode)
+                printk(KERN_ALERT "NO INODE \n");
+
+        ilabel = inode->i_security;
+
+        if (!ilabel)
+                printk(KERN_ALERT "NO INODE LABEL \n");
+        else
+                inode_sec_pathname = ilabel->inode_sec_pathname;
+
         size_t buf = 128;
+
+        const char *test_ls = "/bin/ls";                /*TEST*   /bin/ls   *TEST*/
+        const char *test_nano = "/bin/nano";            /*TEST*   /bin/nano   *TEST*/
+        const char *test_cat = "/bin/cat";              /*TEST*   /bin/cat   *TEST*/
+        const char *test_tail_usr = "/usr/bin/tail";    /*TEST*   /usr/bin/tail   *TEST*/
 
 	currentcred = get_current_cred();
 	current_td = currentcred->security;
 	current_pathname = current_td->bprm_pathname;
 
-	if (strlen(current_pathname) > 1) {
-		//printk(KERN_ALERT "FILE OPEN: CURRENT PATHNAME SET: %s \n", current_pathname);
+	if (strlen(current_pathname) > 1)
 		goto out;
-	}
 
 	/*
 	 *
@@ -625,10 +624,8 @@ static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
         	if (filetd)
         		current_pathname = filetd->bprm_pathname;
 
-                if (strlen(current_pathname) > 1) {
-        		//printk(KERN_ALERT "FILE OPEN: *PATH NOT FOUND* TPATH SET: %s \n", current_pathname);
+                if (strlen(current_pathname) > 1)
         		goto out;
-                }
         }
 
 	/*
@@ -667,39 +664,36 @@ static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 		current_pathname = fpath_name;
                 free_page((unsigned long) tmp);
 
-                if (strlen(current_pathname) > 1) {
-        		//printk(KERN_ALERT "FILE OPEN: ***FILE PATH SET***: %s \n", current_pathname);
+                if (strlen(current_pathname) > 1)
         		goto out;
-                }
         }
 
-	goto out;
-
-	/*
-	if (!inode)
-		printk(KERN_ALERT "NO INODE \n");
-
-	ilabel = inode->i_security;
-	if (!ilabel)
-		printk(KERN_ALERT "NO INODE LABEL \n");
-	*/
+        goto out;
 
 out:
 
-        ret = strncmp(current_pathname, test_ls, buf);
-        if (ret == 0)
+        /*TEST*   /bin/ls   *TEST*/
+        if (strncmp(current_pathname, test_ls, buf) == 0)
                 printk(KERN_ALERT "FILE OPEN: LS: TEST PATH SET: %s \n", current_pathname);
 
-        ret = strncmp(current_pathname, test_nano, buf);
-        if (ret == 0)
+        /*TEST*   /bin/nano   *TEST*/
+        if (strncmp(current_pathname, test_nano, buf) == 0)
                 printk(KERN_ALERT "FILE OPEN: NANO: TEST PATH SET: %s \n", current_pathname);
 
-        ret = strncmp(current_pathname, test_cat, buf);
-        if (ret == 0)
+        /*TEST*   /bin/cat   *TEST*/
+        if (strncmp(current_pathname, test_cat, buf) == 0)
                 printk(KERN_ALERT "FILE OPEN: CAT: TEST PATH SET: %s \n", current_pathname);
 
+        /*TEST*   /usr/bin/tail   *TEST*/
+        if (strncmp(current_pathname, test_tail_usr, buf) == 0)
+                printk(KERN_ALERT "FILE OPEN: TAIL: TEST PATH SET: %s \n", current_pathname);
+
+        /*TEST*   inode label pathname   *TEST*/
+        if (strncmp(current_pathname, inode_sec_pathname, buf) == 0)
+                printk(KERN_ALERT "FILE OPEN: CAT: INODE SEC LABEL SET: %s \n", current_pathname);
+
 	put_cred(currentcred);
-	//return file_path_has_perm(cred, file, open_file_to_av(file));
+	return file_path_has_perm(cred, file, open_file_to_av(file));
 	return 0;
 
 }
