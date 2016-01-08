@@ -38,16 +38,15 @@ Linux kernel security module to implement program based access control mechanism
  *
  * task_audit_data - task security label
  * contains information for current process
- *      - binprm_pathname, path of binary application
+ *      - bprm_pathname, path of binary application
  *
  */
+
 struct task_audit_data {
         char type;
         const char *bprm_pathname;
 #define APPCL_TASK_FREE     1
 #define APPCL_TASK_PERM     0
-        u16 tclass;
-        u32 sid;
         union {
                 struct dentry *dentry;
                 struct inode *inode;
@@ -58,8 +57,10 @@ struct task_audit_data {
  *
  * common_audit_data
  * contains information for common audits
+ * currently unused
  *
  */
+ 
 struct common_audit_data {
         char type;
         const char *tpath_name;
@@ -75,5 +76,21 @@ struct common_audit_data {
                 struct inode *inode;
         } u;
 };
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ *
+ * AUDIT.C
+ * audit functions
+ *
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+extern int check_current_cred_path(const char *sec_pathname, const struct cred *cred);
+extern int check_fpath_match(struct file *file, const struct cred *cred);
+extern int check_inode_path_match(struct inode *inode, const struct cred *cred);
+
+extern unsigned int get_inode_perm_count(struct inode_security_label *ilabel);
+extern unsigned int get_current_inode_perm_count(struct inode_security_label *ilabel, const struct cred *cred);
 
 #endif /* __AUDIT_H */
