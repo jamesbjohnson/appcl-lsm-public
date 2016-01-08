@@ -103,7 +103,7 @@ static void init_task_audit_data(void) {
                 panic("AppCL LSM:  Failed to initialise initial task.\n");
         }
 
-	newtd->bprm_pathname = "init-task";
+	newtd->bprm_pathname = "-init-task";
         cred->security = newtd;
 
 	put_cred(cred);
@@ -129,6 +129,7 @@ static int inode_alloc_security(struct inode *inode)
 	struct appcl_posix_pacl_entry pe2;
 	struct appcl_posix_pacl_entry pe3;
 	struct appcl_posix_pacl_entry pe4;
+	struct appcl_posix_pacl_entry pe5;
 
 	ilabel = kmem_cache_zalloc(sel_inode_cache, GFP_NOFS);
 	if (!ilabel)
@@ -145,18 +146,21 @@ static int inode_alloc_security(struct inode *inode)
 	pe1.e_perm = PACL_WRITE;
 	ilabel->a_entries[1] = pe1;
 
-	pe2.inode_sec_pathname = test_ls;
+	pe2.inode_sec_pathname = test_cat;
 	pe2.e_perm = PACL_EXECUTE;
 	ilabel->a_entries[2] = pe2;
 
-	pe3.inode_sec_pathname = test_cat;
+	pe3.inode_sec_pathname = test_ls;
 	pe3.e_perm = PACL_READ;
 	ilabel->a_entries[3] = pe3;
 
-	pe4.inode_sec_pathname = test_ls;
+	pe4.inode_sec_pathname = test_cat;
 	pe4.e_perm = PACL_READ;
 	ilabel->a_entries[4] = pe4;
 
+	pe5.inode_sec_pathname = test_cat;
+	pe5.e_perm = PACL_READ;
+	ilabel->a_entries[5] = pe5;
 
 	ilabel->a_count = 0;
 	ilabel->inode = inode;
@@ -268,7 +272,7 @@ static int appcl_lsm_file_permission(struct file *file, int mask)
         ilabel = inode->i_security;
         if (!ilabel)
                 return 0;
-
+/*
         if (check_inode_path_match(inode, file->f_cred)) {
                 printk(KERN_ALERT "FILE PERMISSION: INODE SEC LABEL SET \n");
 
@@ -280,8 +284,16 @@ static int appcl_lsm_file_permission(struct file *file, int mask)
 
 		if (p_count)
 			printk(KERN_ALERT "FILE PERMISSION: INODE PERM COUNT SET: %d \n", p_count);
-	}
 
+		unsigned int m_count = 0;
+		spin_lock(&file->f_lock);
+		m_count = get_current_inode_perm_count(ilabel, file->f_cred);
+		spin_unlock(&file->f_lock);
+
+		if (m_count)
+			printk(KERN_ALERT "FILE PERMISSION: INODE CURRENT PERM COUNT SET: %d \n", m_count);
+	}
+*/
         return 0;
 }
 

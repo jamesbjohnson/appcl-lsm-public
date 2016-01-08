@@ -23,56 +23,26 @@ Linux kernel security module to implement program based access control mechanism
 #ifndef __APPCL_LSM_H
 #define __APPCL_LSM_H
 
-#include <linux/init.h>
-#include <linux/kd.h>
 #include <linux/kernel.h>
-#include <linux/tracehook.h>
 #include <linux/errno.h>
 #include <linux/sched.h>
-#include <linux/lsm_hooks.h>
-#include <linux/xattr.h>
 #include <linux/security.h>
-#include <linux/capability.h>
-#include <linux/unistd.h>
-#include <linux/mm.h>
-#include <linux/mman.h>
 #include <linux/slab.h>
-#include <linux/pagemap.h>
-#include <linux/proc_fs.h>
-#include <linux/swap.h>
 #include <linux/spinlock.h>
-#include <linux/syscalls.h>
-#include <linux/dcache.h>
 #include <linux/file.h>
-#include <linux/fdtable.h>
-#include <linux/namei.h>
-#include <linux/mount.h>
-#include <linux/tty.h>
 #include <linux/types.h>
-#include <linux/atomic.h>
-#include <linux/bitops.h>
-#include <linux/interrupt.h>
-#include <linux/nfs_mount.h>
 #include <linux/string.h>
 #include <linux/mutex.h>
-#include <linux/posix-timers.h>
-#include <linux/syslog.h>
-#include <linux/user_namespace.h>
-#include <linux/export.h>
-#include <linux/msg.h>
-#include <linux/shm.h>
-#include <linux/gfp.h>
 #include <linux/list.h>
 #include <linux/cred.h>
 #include <linux/fs.h>
 #include <stdbool.h>
+//#include <linux/xattr.h>
 
-#include "appcl_posix.h"
-
-#define FILE__READ     1
-#define FILE__APPEND   2
-#define FILE__WRITE    4
-#define FILE__IOCTL    8
+//#define FILE__READ     1
+//#define FILE__APPEND   2
+//#define FILE__WRITE    4
+//#define FILE__IOCTL    8
 
 #define PACL_UNDEFINED_ID        (-1)
 
