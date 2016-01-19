@@ -60,7 +60,7 @@ struct task_audit_data {
  * currently unused
  *
  */
- 
+
 struct common_audit_data {
         char type;
         const char *tpath_name;
@@ -92,5 +92,12 @@ extern int check_inode_path_match(struct inode *inode, const struct cred *cred);
 
 extern unsigned int get_inode_perm_count(struct inode_security_label *ilabel);
 extern unsigned int get_current_inode_perm_count(struct inode_security_label *ilabel, const struct cred *cred);
+
+extern unsigned short get_current_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred);
+extern unsigned short get_next_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred, size_t i);
+
+extern int appcl_check_permission_file_match(struct file *file, struct inode *inode, const struct cred *cred);
+extern int appcl_check_permission_mask_match(struct inode_security_label *ilabel, const struct cred *cred, int mask);
+extern int appcl_check_rperm_match(struct inode_security_label *ilabel, const struct cred *cred, int mask, int r_perm);
 
 #endif /* __AUDIT_H */

@@ -51,17 +51,25 @@ Linux kernel security module to implement program based access control mechanism
 #define PACL_TYPE_DEFAULT        (0x4000)
 
 /* e_tag entry in struct posix_acl_entry */
-#define PACL_USER_OBJ            (0x01)
-#define PACL_USER                (0x02)
-#define PACL_GROUP_OBJ           (0x04)
-#define PACL_GROUP               (0x08)
-#define PACL_MASK                (0x10)
-#define PACL_OTHER               (0x20)
+//#define ACL_USER_OBJ           (0x01)
+#define APPCL_DEFINE                	(0x02)
+//#define ACL_USER               (0x02)
+//#define ACL_GROUP_OBJ          (0x04)
+#define APPCL_GROUP               	(0x08)
+//#define ACL_GROUP              (0x08)
+#define APPCL_DEFAULT                	(0x10)
+//#define ACL_MASK               (0x10)
+#define APPCL_OTHER               	(0x20)
 
 /* permissions in the e_perm field */
-#define PACL_READ                (0x04)
-#define PACL_WRITE               (0x02)
-#define PACL_EXECUTE             (0x01)
+#define APPCL_READ                (0x04)
+#define APPCL_WRITE               (0x02)
+#define APPCL_EXECUTE             (0x01)
+
+/* mask definitions */
+#define A_READ                4
+#define A_WRITE               2
+#define A_EXEC		      1
 
 /* maximum entries in permission entries array */
 #define APPCL_MAX_INODE_ENTRIES	10
