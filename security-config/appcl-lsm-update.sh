@@ -1,14 +1,16 @@
 #!/bin/bash
 # update AppCL LSM in security directory of linux kernel
 
-cd /home/jamesjohnson/appcl-lsm/ &&
+HOME="/home/jamesjohnson"
+
+cd $HOME/appcl-lsm/ &&
 git pull &&
-cp -avr /home/jamesjohnson/appcl-lsm /home/jamesjohnson/linux-4.3/security/ &&
-rm /home/jamesjohnson/linux-4.3/security/Makefile &&
-rm /home/jamesjohnson/linux-4.3/security/Kconfig &&
-cp /home/jamesjohnson/appcl-lsm/security-config/Makefile /home/jamesjohnson/linux-4.3/security &&
-cp /home/jamesjohnson/appcl-lsm/security-config/Kconfig /home/jamesjohnson/linux-4.3/security &&
-cd /home/jamesjohnson/linux-4.3/ &&
+cp -avr $HOME/appcl-lsm $HOME/linux-4.3/security/ &&
+rm $HOME/linux-4.3/security/Makefile &&
+rm $HOME/linux-4.3/security/Kconfig &&
+cp $HOME/appcl-lsm/security-config/Makefile $HOME/linux-4.3/security &&
+cp $HOME/appcl-lsm/security-config/Kconfig $HOME/linux-4.3/security &&
+cd $HOME/linux-4.3/ &&
 make clean &&
 make menuconfig &&
 make && make modules_install && make install
