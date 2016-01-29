@@ -73,12 +73,14 @@ int check_current_cred_path(const char *sec_pathname, const struct cred *cred)
 {
          const struct task_audit_data *current_td; /* current task data */
          const char *current_pathname = "/";
-         size_t buf = 64;
+         size_t buf = 32;
 
          current_td = cred->security;
          current_pathname = current_td->bprm_pathname;
          if (!current_pathname)
                  return 0;
+
+         printk(KERN_ALERT "CURRENT_PATHNAME: %s \n", current_pathname);
 
          if (strncmp(current_pathname, sec_pathname, buf) == 0) {
                 // printk(KERN_ALERT "CHECK CURRENT PATH: INODE SEC LABEL SET: %s \n", current_pathname);
