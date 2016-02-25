@@ -80,7 +80,7 @@ int check_current_cred_path(const char *sec_pathname, const struct cred *cred)
          if (!current_pathname)
                  return 0;
 
-         printk(KERN_ALERT "CURRENT_PATHNAME: %s \n", current_pathname);
+         //printk(KERN_ALERT "CURRENT_PATHNAME: %s \n", current_pathname);
 
          if (strncmp(current_pathname, sec_pathname, buf) == 0) {
                 // printk(KERN_ALERT "CHECK CURRENT PATH: INODE SEC LABEL SET: %s \n", current_pathname);
@@ -103,7 +103,7 @@ unsigned short get_current_perm_enforce(struct inode_security_label *ilabel, con
         size_t i;
 
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
-                struct appcl_posix_pacl_entry entry;
+                struct appcl_pacl_entry entry;
                 entry = ilabel->a_entries[i];
                 if (entry.e_perm) {
                         const char *sec_pathname = "/";
@@ -118,7 +118,7 @@ EXPORT_SYMBOL(get_current_perm_enforce);
 
 unsigned short get_next_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred, size_t n)
 {
-        struct appcl_posix_pacl_entry entry;
+        struct appcl_pacl_entry entry;
         entry = ilabel->a_entries[n];
         if (entry.e_perm) {
                 const char *sec_pathname = "/";
@@ -144,9 +144,9 @@ unsigned int get_inode_perm_count(struct inode_security_label *ilabel)
         size_t i;
 
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
-                struct appcl_posix_pacl_entry entry;
+                struct appcl_pacl_entry entry;
                 entry = ilabel->a_entries[i];
-                if (entry.e_perm)
+                if (entry.e_tag)
                         p_count++;
                 else
                         return p_count;
@@ -171,7 +171,7 @@ unsigned int get_current_inode_perm_count(struct inode_security_label *ilabel, c
         size_t i;
 
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
-                struct appcl_posix_pacl_entry entry;
+                struct appcl_pacl_entry entry;
                 entry = ilabel->a_entries[i];
                 if (entry.e_perm) {
                         const char *sec_pathname = "/";

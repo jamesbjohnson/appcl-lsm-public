@@ -37,12 +37,7 @@ Linux kernel security module to implement program based access control mechanism
 #include <linux/cred.h>
 #include <linux/fs.h>
 #include <stdbool.h>
-//#include <linux/xattr.h>
-
-//#define FILE__READ     1
-//#define FILE__APPEND   2
-//#define FILE__WRITE    4
-//#define FILE__IOCTL    8
+#include <linux/xattr.h>
 
 #define PACL_UNDEFINED_ID        (-1)
 
@@ -66,17 +61,28 @@ Linux kernel security module to implement program based access control mechanism
 #define APPCL_WRITE               (0x02)
 #define APPCL_EXECUTE             (0x01)
 
-/* mask definitions */
-#define A_READ                4
-#define A_WRITE               2
-#define A_EXEC		      1
+/* xattr e_perm representation */
+#define XATTR_READ                "r"
+#define XATTR_WRITE               "w"
+#define XATTR_EXECUTE             "x"
+
+#define VALID_XV 		0
+#define INVALID_XV		1
 
 /* maximum entries in permission entries array */
 #define APPCL_MAX_INODE_ENTRIES	10
+#define APPCL_LNG_LABEL 256
+
+#define APPCL_VALUE_UNLABELLED "-/appcl-unlabelled"
+#define APPCL_INIT_TASK "-/appcl-init-task"
+
+/* xattr security namespace */
+#define XATTR_APPCL_SUFFIX "appcl"
+#define XATTR_NAME_APPCL XATTR_SECURITY_PREFIX XATTR_APPCL_SUFFIX
 
 /*
  *
- * appcl_posix_pacl_entry
+ * appcl_pacl_entry
  *      - permission entry to a_entries array of inode_security_label
  *      - e_perm, file system permission to enforce
  *	- e_tag, entry tag, for future use (default group tags etc)
@@ -84,10 +90,10 @@ Linux kernel security module to implement program based access control mechanism
  *
  */
 
-struct appcl_posix_pacl_entry {
+struct appcl_pacl_entry {
 	short			e_tag;
         unsigned short          e_perm;
-	const char *inode_sec_pathname; /* path name */
+	const char *inode_sec_pathname; /* app path name */
 };
 
 /*
@@ -100,14 +106,23 @@ struct appcl_posix_pacl_entry {
  */
 
 struct inode_security_label {
-	unsigned int            a_count;
-	struct appcl_posix_pacl_entry a_entries[APPCL_MAX_INODE_ENTRIES];
+	const char			*xvalue; /* xattr representation */
+	int 				valid_xvalue;
+	struct appcl_pacl_entry 	a_entries[APPCL_MAX_INODE_ENTRIES];
+	unsigned int            	a_count;
 	union {
                 struct list_head list;  /* list of file_security_label */
                 struct rcu_head rcu;    /* for freeing the inode_security_struct */
         };
 	struct inode *inode;    /* back pointer to inode object */
         struct mutex lock;
+};
+
+struct superblock_security_label {
+	struct super_block *sb;
+        struct mutex lock;
+	struct list_head isec_head;
+	spinlock_t isec_lock;
 };
 
 /*
