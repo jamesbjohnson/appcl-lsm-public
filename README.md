@@ -40,8 +40,13 @@ The Linux utility 'setfattr' is used to set the permissions for an inode and sto
 It populates the security information when a user sets an extended attribute (appcl_lsm_inode_post_setxattr)
 
 #Permissions
+- General permission mask
 appcl_lsm_inode_permission, checks if the current process path matches a security path on the requested inode 'check_current_cred_path()'.
 It then checks the requested permission mask against the permission entries for the inode, 'appcl_check_permission_mask_match()', and grants access based on this.
+- Specific requested permission
+Hooks such as appcl_lsm_inode_create check for a specific permissions to complete the action.
+E.g. The inode_create hook, first checks the process path as with the inode_permission hook, and then checks for specific WRITE permission 'appcl_check_rperm_match()'.
+E.g. The file_open hook, first checks the process path as with the inode_permission hook, and then checks for specific READ permission 'appcl_check_rperm_match()'.
 
 #Current issue
 When the system is powered off/reboots, AppCL must reset the security information for the inodes with an AppCL extended attribute. This is because the inode security label is stored in RAM and the extended attribute is used to retain a representation of this on disk.
