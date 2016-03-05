@@ -18,11 +18,11 @@
 
 #audit.c
 - Audit functions for permforming access control (key audit functions detailed below)
-- check_current_cred_path()
+- check_current_cred_path()\n
         - Compares PACL pathname, with current credentials path name
-- appcl_check_permission_mask_match()
+- appcl_check_permission_mask_match()\n
         - Check permission mask, against inode PACL entries permissions
-- appcl_check_rperm_match()
+- appcl_check_rperm_match()\n
         - Check for a specific requested permission, in inode PACL entries
 
 #audit.h
@@ -40,12 +40,12 @@ The Linux utility 'setfattr' is used to set the permissions for an inode and sto
 It populates the security information when a user sets an extended attribute (appcl_lsm_inode_post_setxattr)
 
 #Permissions
-- General permission mask
-appcl_lsm_inode_permission, checks if the current process path matches a security path on the requested inode 'check_current_cred_path()'.
+General permission mask.\n
+'appcl_lsm_inode_permission' security hook, checks if the current process path matches a security path on the requested inode 'check_current_cred_path()'.
 It then checks the requested permission mask against the permission entries for the inode, 'appcl_check_permission_mask_match()', and grants access based on this.
-- Specific requested permission
-Hooks such as appcl_lsm_inode_create check for a specific permissions to complete the action.
-E.g. The inode_create hook, first checks the process path as with the inode_permission hook, and then checks for specific WRITE permission 'appcl_check_rperm_match()'.
+Specific requested permission.\n
+Hooks such as appcl_lsm_inode_create check for a specific permissions to complete the action.\n
+E.g. The inode_create hook, first checks the process path as with the inode_permission hook, and then checks for specific WRITE permission 'appcl_check_rperm_match()'.\n
 E.g. The file_open hook, first checks the process path as with the inode_permission hook, and then checks for specific READ permission 'appcl_check_rperm_match()'.
 
 #Current issue
