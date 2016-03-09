@@ -57,21 +57,25 @@ Linux kernel security module to implement program based access control mechanism
 #define APPCL_OTHER               	(0x20)
 
 /* permissions in the e_perm field */
-#define APPCL_READ                (0x04)
-#define APPCL_WRITE               (0x02)
-#define APPCL_EXECUTE             (0x01)
+#define APPCL_READ                	(0x04)
+#define APPCL_WRITE               	(0x02)
+#define APPCL_EXECUTE             	(0x01)
 
 /* xattr e_perm representation */
-#define XATTR_READ                "r"
-#define XATTR_WRITE               "w"
-#define XATTR_EXECUTE             "x"
+#define XATTR_READ                	"r"
+#define XATTR_WRITE               	"w"
+#define XATTR_EXECUTE             	"x"
 
-#define VALID_XV 		0
-#define INVALID_XV		1
+#define VALID_XV 			0
+#define INVALID_XV			1
 
 /* maximum entries in permission entries array */
-#define APPCL_MAX_INODE_ENTRIES	10
-#define APPCL_LNG_LABEL 256
+#define APPCL_MAX_INODE_ENTRIES		10
+/* maximum label length */
+#define APPCL_LNG_LABEL	 		128
+/* inode instantiated flag */
+#define APPCL_INODE_INSTANT		8
+
 
 #define APPCL_VALUE_UNLABELLED "-/appcl-unlabelled"
 #define APPCL_INIT_TASK "-/appcl-init-task"
@@ -110,6 +114,7 @@ struct inode_security_label {
 	int 				valid_xvalue;
 	struct appcl_pacl_entry 	a_entries[APPCL_MAX_INODE_ENTRIES];
 	unsigned int            	a_count;
+	int				flags;
 	union {
                 struct list_head list;  /* list of file_security_label */
                 struct rcu_head rcu;    /* for freeing the inode_security_struct */
@@ -117,6 +122,10 @@ struct inode_security_label {
 	struct inode *inode;    /* back pointer to inode object */
         struct mutex lock;
 };
+
+#define appcl_known_star "*"
+#define appcl_known_huh "?"
+#define appcl_known_default "DEFAULT"
 
 struct superblock_security_label {
 	struct super_block *sb;
