@@ -39,6 +39,7 @@ Linux kernel security module to implement program based access control mechanism
 #include <linux/pagemap.h>
 #include <linux/proc_fs.h>
 #include <linux/magic.h>
+#include <linux/ctype.h>
 #include <linux/swap.h>
 #include <linux/spinlock.h>
 #include <linux/syscalls.h>
@@ -100,18 +101,27 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	char *permSplit = NULL;
 	char delim[1] = ";"; char split[1] = ":";
 	char perm[1];
-	int pe_perm;
-	int len;
+	int pe_perm = 0;
+	int len = 0;
+
+	/* test paths */
+	const char *nano = "/bin/nano";
+	const char *vim = "/usr/bin/vim.basic";
+	const char *cat = "/bin/cat";
 
 	len = strlen(value);
 
-	/* GET PATH VALUE */
+	/*
+	 * Get path value
+	 */
 	if ((permSplit = strsep(&value, split)) != NULL) {
 		len = strlen(permSplit);
 		path = kstrdup(permSplit, GFP_KERNEL);
 	}
 
-	/* GET PERMISSION VALUE */
+	/*
+	 * Get permission value
+	 */
 	if ((permSplit = strsep(&value, delim)) != NULL) {
 		len = strlen(permSplit);
 		perm[0] = permSplit[0];
@@ -126,16 +136,13 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 			pe_perm = APPCL_OTHER;
 	}
 
-	int buf = 32;
-	const char *nano = "/bin/nano";
-	const char *vim = "/usr/bin/vim.basic";
-	const char *cat = "/bin/cat";
+	/* test paths */
 	if (path != NULL) {
-		if (strncmp(path, nano, buf) == 0) {
+		if (strncmp(path, nano, APPCL_LNG_LABEL) == 0) {
 			t_pe.inode_sec_pathname = nano;
-		} else if (strncmp(path, vim, buf) == 0){
+		} else if (strncmp(path, vim, APPCL_LNG_LABEL) == 0){
 			t_pe.inode_sec_pathname = vim;
-		} else if (strncmp(path, cat, buf) == 0){
+		} else if (strncmp(path, cat, APPCL_LNG_LABEL) == 0){
 			t_pe.inode_sec_pathname = cat;
 		} else {
 			t_pe.inode_sec_pathname = APPCL_VALUE_UNLABELLED;
@@ -150,6 +157,81 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	t_pe.e_tag = APPCL_DEFINE;
 
 	return t_pe;
+}
+
+static int isvalid_xvalue(const char *xvalue)
+{
+	if (xvalue == NULL)
+		return INVALID_XV;
+
+	/*
+	 * Checks for 'xvalue' known invalid values
+	 */
+	if ((strncmp(xvalue, appcl_known_huh, LOWERVALUELEN) == 0) ||
+ 		(strncmp(xvalue, appcl_known_star, LOWERVALUELEN) == 0) ||
+		(strncmp(xvalue, appcl_known_default, LOWERVALUELEN) == 0)) {
+		return INVALID_XV;
+	} else {
+		/*
+		 * xvalue must meet the lower value length
+		 */
+		if (strlen(xvalue) > LOWERVALUELEN)
+			return VALID_XV;
+		else
+			return INVALID_XV;
+	}
+}
+
+/*
+ *
+ *      - specific permission check
+ *      - uses appcl_check_rperm_match()
+ *        - pass inode security label, current credential,
+ *	  - && the specific permission to check
+ *
+ */
+
+static int appcl_specific_perm_check(struct inode *inode, int perm)
+{
+	struct inode_security_label *ilabel = inode->i_security;
+	const struct cred *c_cred;
+
+	if (!ilabel)
+		return 0;
+
+	perm &= MAY_READ | MAY_WRITE | MAY_APPEND | MAY_EXEC;
+
+	mutex_lock(&ilabel->lock);
+
+	/*
+	 * Fetch current credential
+	 */
+	c_cred = get_current_cred();
+
+	/*
+	 * Check current credential path against inode 'PACL' entries
+	 */
+	if (check_inode_path_match(inode, c_cred)) {
+		/*
+		 * Check for specific permission in inode 'PACL' entries
+		 */
+		if (appcl_check_rperm_match(ilabel, c_cred, perm, perm))
+			goto successout;
+		else
+			goto failout;
+	} else {
+		goto successout;
+	}
+
+successout:
+	mutex_unlock(&ilabel->lock);
+	put_cred(c_cred);
+	return 0;
+
+failout:
+	mutex_unlock(&ilabel->lock);
+	put_cred(c_cred);
+	return -EACCES;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -170,28 +252,41 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 
 static int appcl_inode_setotherxattr(struct dentry *dentry, const char *name)
 {
+	/*
+	 * Security namespace attribute, restrict to administrator
+	 */
 	if (strncmp(name, XATTR_SECURITY_PREFIX, sizeof XATTR_SECURITY_PREFIX - 1) == 0) {
 		if (strcmp(name, XATTR_NAME_CAPS) == 0) {
 			if (!capable(CAP_SETFCAP))
 				return -EPERM;
 		} else if (!capable(CAP_SYS_ADMIN)) {
-			/* A different attribute to the security namespace
-			   Restrict to administrator. */
+			   /*
+		   	    * A different attribute to the security namespace,
+			    * Restrict to administrator
+		   	    */
 			   return -EPERM;
 		}
 	}
-	/* Not an attribute we recogise, todo: so just check for 'WRITE?'
-	(setattr) permission */
+	/*
+	 * Not an attribute we recogise, todo: so just check for 'WRITE?',
+	 * (setattr) permission
+	 */
 	return 0;
 }
 
 static int appcl_lsm_inode_setxattr(struct dentry *dentry, const char *name,
 				const void *value, size_t size, int flags)
 {
-	int ret;
+	int ret = 0;
 
+	/*
+	 * Security AppCL namespace attribute, restrict to administrator
+	 */
 	if (strncmp(name, XATTR_NAME_APPCL, sizeof XATTR_NAME_APPCL - 1) == 0) {
-		ret = 0;
+		if (capable(CAP_SYS_ADMIN))
+			ret = 0;
+		else
+			ret = -EPERM;
 	} else {
 		ret = appcl_inode_setotherxattr(dentry, name);
 	}
@@ -206,20 +301,27 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 	struct inode_security_label *ilabel = inode->i_security;
 	struct appcl_pacl_entry pe;
 	const char *xvalue;
+	size_t i;
 
+	/*
+	 * Process AppCL namespace extended attribute after
+	 * successfull setxattr operation.
+	 * Permission check handled in 'appcl_lsm_inode_setxattr()'
+	 */
 	if (strncmp(name, XATTR_NAME_APPCL, sizeof XATTR_NAME_APPCL - 1) == 0) {
 		if (value) {
 
 			char *temp = (char*)value;
+			const char *tempx = kstrdup(temp, GFP_KERNEL);
 			char *opt = NULL;
 			char delim[1] = ";";
 
-			printk(KERN_ALERT "POSTSETXATTR VALUE: %s\n", temp);
+			xvalue = kstrdup(tempx, GFP_KERNEL);
 
-			xvalue = kstrdup(temp, GFP_KERNEL);
-			ilabel->xvalue = kstrdup(xvalue, GFP_KERNEL);
-
-			size_t i;
+			/*
+			 * Parse extended attribute value to 'PACL entries'
+			 * to store in a_entries array of security label
+			 */
 			for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
 				if ((opt = strsep(&temp, delim)) != NULL) {
 					pe = make_appcl_entry(opt);
@@ -230,18 +332,22 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 			}
 
 			ilabel->a_count = i - 1;
-			pe = ilabel->a_entries[0];
-			if (pe.e_perm == APPCL_OTHER)
-				ilabel->valid_xvalue = INVALID_XV;
+
+			/*
+			 * Set inodes 'xvalue' from extended attribute.
+			 * No xvalue set to 'known_huh [?]'
+			 */
+			if (xvalue != NULL)
+				ilabel->xvalue = kstrdup(xvalue, GFP_KERNEL);
 			else
-				ilabel->valid_xvalue = VALID_XV;
+				ilabel->xvalue = appcl_known_huh;
 
+			/*
+			 * Checks for valid 'xvalue' and sets inode 'valid_xvalue' flag
+			 */
+			ilabel->valid_xvalue = isvalid_xvalue(ilabel->xvalue);
+			ilabel->flags = APPCL_ATTR_SET;
 			ilabel->inode = inode;
-
-			printk(KERN_ALERT "POSTSETXATTR I_XVALUE: %s\n", ilabel->xvalue);
-			printk(KERN_ALERT "POSTSETXATTR XVALUE FLAG: %d\n", ilabel->valid_xvalue);
-			printk(KERN_ALERT "POSTSETXATTR A_COUNT: %d\n", ilabel->a_count);
-
 
 		}
 	}
@@ -251,25 +357,32 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 
 static int appcl_lsm_inode_getxattr(struct dentry *dentry, const char *name)
 {
-
+	/*
+	 * Security AppCL namespace attribute, allow getxattr
+	 */
 	if (!strncmp(name, XATTR_NAME_APPCL, sizeof XATTR_NAME_APPCL - 1))
 		return 0;
 
 	return 0;
 }
-/*
-static int appcl_lsm_inode_listxattr(struct dentry *dentry)
-{
-	return 0;
-}
-*/
+
 static int appcl_lsm_inode_removexattr(struct dentry *dentry, const char *name)
 {
-	if (strcmp(name, XATTR_NAME_APPCL))
-		return appcl_inode_setotherxattr(dentry, name);
+	int ret = 0;
 
-	/* No one is allowed to remove AppCL label at present todo: */
-	return -EACCES;
+	/*
+	 * Security AppCL namespace attribute, restrict to administrator
+	 */
+	if (strncmp(name, XATTR_NAME_APPCL, sizeof XATTR_NAME_APPCL - 1) == 0) {
+		if (capable(CAP_SYS_ADMIN))
+			ret = 0;
+		else
+			ret = -EPERM;
+	} else {
+		ret = appcl_inode_setotherxattr(dentry, name);
+	}
+
+	return ret;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -280,6 +393,239 @@ static int appcl_lsm_inode_removexattr(struct dentry *dentry, const char *name)
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+static int inode_do_init(struct inode *inode, struct dentry *dentry)
+{
+	struct inode_security_label *ilabel = inode->i_security;
+	struct dentry *x_dentry;
+	const char *xvalue = NULL;
+	char *value = NULL;
+	char *final_xvalue = NULL;
+	unsigned int len = 0;
+	int rc = 0;
+	size_t i;
+
+	struct super_block *sbp;
+	sbp = inode->i_sb;
+
+	mutex_lock(&ilabel->lock);
+
+	/*
+	 * Check if inode is already instantiated -
+	 * return if inode holds 'APPCL_INODE_INSTANT' flag
+	 */
+	if (ilabel->flags & APPCL_INODE_INSTANT)
+		goto outunlock;
+
+	/*
+	 * Identify if inode is the root inode
+	 */
+	if (dentry->d_parent == dentry) {
+		/*
+		 * Root inode
+		 */
+		switch (sbp->s_magic) {
+			case  CGROUP_SUPER_MAGIC:
+				final_xvalue = appcl_known_star;
+				break;
+			case TMPFS_MAGIC:
+				final_xvalue = appcl_known_star;
+				break;
+			case PIPEFS_MAGIC:
+				final_xvalue = appcl_known_star;
+				break;
+			default:
+				final_xvalue = appcl_known_default;
+				break;
+		}
+		if (final_xvalue)
+			ilabel->xvalue = final_xvalue;
+		else
+			ilabel->xvalue = appcl_known_huh;
+
+		ilabel->flags = APPCL_INODE_INSTANT;
+
+		goto outunlock;
+	}
+
+	/*
+	 * With thanks to 'SMACK'.
+	 * Quote from SMACK smack_lsm.c
+	 * 'This is pretty hackish.
+	 * Casey says that we shouldn't have to do file system specific code,
+	 * but it does help with keeping it simple.'
+	 */
+	switch (sbp->s_magic) {
+		case SMACK_MAGIC:
+		case PIPEFS_MAGIC:
+		case SOCKFS_MAGIC:
+		case CGROUP_SUPER_MAGIC:
+			final_xvalue = appcl_known_star;
+			break;
+		case DEVPTS_SUPER_MAGIC:
+			final_xvalue = appcl_known_star;
+			break;
+		case PROC_SUPER_MAGIC:
+			final_xvalue = appcl_known_star;
+			break;
+		case TMPFS_MAGIC:
+			final_xvalue = appcl_known_star;
+		default:
+			/*
+		 	 * Get the value from the extended attribute
+		 	 */
+
+			/*
+ 		 	 * No xattr support unfortunately means no AppCL
+			 * label at present.
+ 		 	 */
+			if (!inode->i_op->getxattr)
+				goto outunlock;
+
+			/*
+			 * Get the dentry for the xattr interface
+			 */
+			if (dentry)
+				x_dentry = dget(dentry);
+			else
+				goto outunlock;
+
+			if (!x_dentry)
+				goto outunlock;
+
+			len = INITVALUELEN;
+			value = kmalloc(len+1, GFP_NOFS);
+			if (!value) {
+				rc = -ENOMEM;
+				dput(x_dentry);
+				goto outunlock;
+			}
+			value[len] = '\0';
+
+			/*
+			 * Fetch the extended attribute value into the buffer 'value'
+			 */
+			rc = inode->i_op->getxattr(x_dentry, XATTR_NAME_APPCL, value, len);
+
+			if (value != NULL) {
+				struct appcl_pacl_entry pe;
+				char *opt = NULL;
+				char delim[1] = ";";
+				char *temp = (char*)value;
+				const char *tempx = kstrdup(temp, GFP_KERNEL);
+
+				xvalue = kstrdup(tempx, GFP_KERNEL);
+
+				/*
+				 * Parse extended attribute value to 'PACL entries'
+				 * to store in a_entries array of security label
+				 */
+				for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
+					if ((opt = strsep(&temp, delim)) != NULL) {
+						pe = make_appcl_entry(opt);
+						ilabel->a_entries[i] = pe;
+					} else {
+						break;
+					}
+				}
+				ilabel->a_count = i - 1;
+			}
+			dput(x_dentry);
+			kfree(value);
+	}
+
+	/*
+	 * Set inodes 'xvalue' from extended attribute.
+	 * No xvalue set to 'known_huh [?]'
+	 */
+	 if (xvalue != NULL)
+	 	ilabel->xvalue = kstrdup(xvalue, GFP_KERNEL);
+	 else
+	 	ilabel->xvalue = appcl_known_huh;
+
+	/*
+	 * Checks for valid 'xvalue' and sets inode 'valid_xvalue' flag.
+	 */
+	ilabel->valid_xvalue = isvalid_xvalue(ilabel->xvalue);
+
+	/*
+	 * Set inode flag to mark inode as instantiated.
+	 */
+	ilabel->flags = APPCL_INODE_INSTANT;
+
+	goto outunlock;
+
+outunlock:
+	if (!ilabel->a_count)
+		ilabel->a_count = 0;
+	ilabel->inode = inode;
+	mutex_unlock(&ilabel->lock);
+	return rc;
+}
+
+static void appcl_lsm_d_instantiate(struct dentry *dentry, struct inode *inode)
+{
+	if (inode)
+		inode_do_init(inode, dentry);
+}
+
+static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
+                                        const void *value, size_t size, int flags)
+{
+	struct inode_security_label *ilabel = inode->i_security;
+	struct appcl_pacl_entry pe;
+	const char *xvalue;
+	size_t i;
+
+	if (strcmp(name, XATTR_APPCL_SUFFIX))
+		return -EOPNOTSUPP;
+
+	if (value == NULL || size > APPCL_LNG_LABEL || size == 0)
+		return -EINVAL;
+
+		if (value) {
+
+			char *temp = (char*)value;
+			const char *tempx = kstrdup(temp, GFP_KERNEL);
+			char *opt = NULL;
+			char delim[1] = ";";
+
+			xvalue = kstrdup(tempx, GFP_KERNEL);
+
+			/*
+			 * Parse extended attribute value to 'PACL entries'
+			 * to store in a_entries array of security label
+			 */
+			for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
+				if ((opt = strsep(&temp, delim)) != NULL) {
+					pe = make_appcl_entry(opt);
+					ilabel->a_entries[i] = pe;
+				} else {
+					break;
+				}
+			}
+
+			ilabel->a_count = i - 1;
+
+			/*
+			 * Set inodes 'xvalue' from extended attribute.
+			 * No xvalue set to 'known_huh [?]'
+			 */
+			if (xvalue != NULL)
+				ilabel->xvalue = kstrdup(xvalue, GFP_KERNEL);
+			else
+				ilabel->xvalue = appcl_known_huh;
+
+			/*
+			 * Checks for valid 'xvalue' and sets inode 'valid_xvalue' flag
+			 */
+			ilabel->valid_xvalue = isvalid_xvalue(ilabel->xvalue);
+			ilabel->flags = APPCL_ATTR_SET;
+			ilabel->inode = inode;
+		}
+
+	return 0;
+}
+/*
 static int appcl_lsm_inode_init_security(struct inode *inode, struct inode *dir,
                                         const struct qstr *qstr, const char **name,
 					void **value, size_t *len)
@@ -307,273 +653,8 @@ static int appcl_lsm_inode_init_security(struct inode *inode, struct inode *dir,
 
 	return 0;
 }
-
-/*
-static int appcl_lsm_inode_getsecurity(const struct inode *inode, const char *name,
-                                        void **buffer, bool alloc)
-{
-
-	struct inode_security_label *ilabel = inode->i_security;
-	struct inode *x_inode = (struct inode *)inode;
-	const char *i_xvalue;
-	int ilen;
-	const char *nano = "/bin/nano:w;";
-
-
-	if (strcmp(name, XATTR_APPCL_SUFFIX) == 0) {
-
-		ilen = strlen(nano);
-		*buffer = nano;
-
-		printk(KERN_ALERT "GETSECURITY RETURN BUFFER: %s \n", nano);
-		printk(KERN_ALERT "GETSECURITY RETURN ILEN: %d \n", ilen);
-
-		return ilen;
-	}
-
-	return 0;
-}
 */
-static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
-                                        const void *value, size_t size, int flags)
-{
-	struct inode_security_label *ilabel = inode->i_security;
-	struct appcl_pacl_entry pe;
-	const char *xvalue;
 
-	if (strcmp(name, XATTR_APPCL_SUFFIX))
-		return -EOPNOTSUPP;
-
-	if (value == NULL || size > APPCL_LNG_LABEL || size == 0)
-		return -EINVAL;
-
-		if (value) {
-
-			char *temp = (char*)value;
-			char *opt = NULL;
-			char delim[1] = ";";
-
-			printk(KERN_ALERT "POSTSETXATTR VALUE: %s\n", temp);
-
-			xvalue = kstrdup(temp, GFP_KERNEL);
-			ilabel->xvalue = kstrdup(xvalue, GFP_KERNEL);
-
-			size_t i;
-			for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
-				if ((opt = strsep(&temp, delim)) != NULL) {
-					pe = make_appcl_entry(opt);
-					ilabel->a_entries[i] = pe;
-				} else {
-					break;
-				}
-			}
-
-			ilabel->a_count = i - 1;
-			pe = ilabel->a_entries[0];
-			if (pe.e_perm == APPCL_OTHER)
-				ilabel->valid_xvalue = INVALID_XV;
-			else
-				ilabel->valid_xvalue = VALID_XV;
-
-			ilabel->inode = inode;
-		}
-	return 0;
-}
-
-static int isvalid_xvalue(char *xvalue, int LOWERVALUELEN)
-{
-	if (xvalue == NULL)
-		return INVALID_XV;
-
-	if ((strncmp(xvalue, appcl_known_huh, LOWERVALUELEN) == 0) ||
- 		(strncmp(xvalue, appcl_known_star, LOWERVALUELEN) == 0) ||
-		(strncmp(xvalue, appcl_known_default, LOWERVALUELEN) == 0)) {
-		return INVALID_XV;
-	} else {
-		if (strlen(xvalue) > LOWERVALUELEN)
-			return VALID_XV;
-		else
-			return INVALID_XV;
-	}
-}
-
-static int inode_do_init(struct inode *inode, struct dentry *dentry)
-{
-	struct inode_security_label *ilabel = inode->i_security;
-	struct dentry *x_dentry;
-#define INITVALUELEN 255
-#define LOWERVALUELEN 4
-	char *value = NULL;
-	char *final_xvalue = NULL;
-	unsigned int len = 0;
-	int rc = 0;
-
-	struct super_block *sbp;
-	sbp = inode->i_sb;
-
-	mutex_lock(&ilabel->lock);
-
-	if (ilabel->flags & APPCL_INODE_INSTANT)
-		goto outunlock;
-
-	if (dentry->d_parent == dentry) {
-		/* root inode */
-		switch (sbp->s_magic) {
-			case  CGROUP_SUPER_MAGIC:
-				final_xvalue = appcl_known_star;
-				break;
-			case TMPFS_MAGIC:
-				final_xvalue = appcl_known_star;
-				break;
-			case PIPEFS_MAGIC:
-				final_xvalue = appcl_known_star;
-				break;
-			default:
-				final_xvalue = appcl_known_default;
-				break;
-		}
-		if (final_xvalue)
-			ilabel->xvalue = final_xvalue;
-		else
-			ilabel->xvalue = appcl_known_huh;
-
-		ilabel->flags = APPCL_INODE_INSTANT;
-
-		goto outunlock;
-	}
-
-	switch (sbp->s_magic) {
-		case SMACK_MAGIC:
-		case PIPEFS_MAGIC:
-		case SOCKFS_MAGIC:
-		case CGROUP_SUPER_MAGIC:
-			final_xvalue = appcl_known_star;
-			break;
-		case DEVPTS_SUPER_MAGIC:
-			final_xvalue = appcl_known_star;
-			break;
-		case PROC_SUPER_MAGIC:
-			final_xvalue = appcl_known_star;
-			break;
-		case TMPFS_MAGIC:
-			final_xvalue = appcl_known_star;
-		default:
-			if (!inode->i_op->getxattr)
-				goto outunlock;
-
-			if (dentry)
-				x_dentry = dget(dentry);
-			if (!x_dentry)
-				goto outunlock;
-
-			len = INITVALUELEN;
-			value = kmalloc(len+1, GFP_NOFS);
-			if (!value) {
-				rc = -ENOMEM;
-				dput(x_dentry);
-				goto outunlock;
-			}
-			value[len] = '\0';
-			rc = inode->i_op->getxattr(x_dentry, XATTR_NAME_APPCL, value, len);
-			if (value != NULL) {
-				struct appcl_pacl_entry pe;
-				char *opt = NULL;
-				char delim[1] = ";";
-				char *temp = (char*)value;
-
-				final_xvalue = kstrdup(temp, GFP_KERNEL);
-
-				size_t i;
-				for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
-					if ((opt = strsep(&temp, delim)) != NULL) {
-						pe = make_appcl_entry(opt);
-						ilabel->a_entries[i] = pe;
-					} else {
-						break;
-					}
-				}
-				ilabel->a_count = i - 1;
-			}
-			dput(x_dentry);
-			kfree(value);
-	}
-
-	if (final_xvalue != NULL) {
-		if (strlen(final_xvalue) > LOWERVALUELEN)
-			ilabel->xvalue = final_xvalue;
-		else
-			ilabel->xvalue = appcl_known_huh;
-	}
-
-	ilabel->valid_xvalue = isvalid_xvalue(ilabel->xvalue, LOWERVALUELEN);
-	ilabel->flags = APPCL_INODE_INSTANT;
-
-	goto outunlock;
-
-outunlock:
-	if (!ilabel->a_count)
-		ilabel->a_count = 0;
-	ilabel->inode = inode;
-	mutex_unlock(&ilabel->lock);
-	return rc;
-}
-
-static void appcl_lsm_d_instantiate(struct dentry *dentry, struct inode *inode)
-{
-	if (inode)
-		inode_do_init(inode, dentry);
-}
-/*
-static int appcl_lsm_inode_listsecurity(struct inode *inode, char *buffer,
-                                        size_t buffer_size)
-{
-	int len = sizeof(XATTR_NAME_APPCL);
-        if (buffer != NULL && len <= buffer_size)
-                memcpy(buffer, XATTR_NAME_APPCL, len);
-        return len;
-}
-
-static int appcl_lsm_ismaclabel(const char *name)
-{
-	return (strcmp(name, XATTR_APPCL_SUFFIX) == 0);
-}
-*/
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *
- *
- * SECURITY CONTEXT HOOKS
- *
- *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/*
-static void appcl_lsm_release_secctx(char *secdata, u32 seclen)
-{
-}
-
-static int appcl_lsm_inode_notifysecctx(struct inode *inode, void *ctx, u32 ctxlen)
-{
-	return appcl_lsm_inode_setsecurity(inode, XATTR_APPCL_SUFFIX, ctx, ctxlen, 0);
-	//return 0;
-}
-
-static int appcl_lsm_inode_setsecctx(struct dentry *dentry, void *ctx, u32 ctxlen)
-{
-	return __vfs_setxattr_noperm(dentry, XATTR_NAME_APPCL, ctx, ctxlen, 0);
-	//return 0;
-}
-*/
-/*
-static int appcl_lsm_inode_getsecctx(struct inode *inode, void **ctx, u32 *ctxlen)
-{
-	int len = 0;
-        len = appcl_lsm_inode_getsecurity(inode, XATTR_APPCL_SUFFIX, ctx, true);
-
-        if (len < 0)
-                return len;
-        *ctxlen = len;
-        return 0;
-}
-*/
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  *
@@ -582,9 +663,20 @@ static int appcl_lsm_inode_getsecctx(struct inode *inode, void **ctx, u32 *ctxle
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+ /*
+  *
+  *
+  *      - inode security label hooks
+  *      - allocate & free appcl inode security label
+  *
+  *
+  */
+
 static int appcl_lsm_inode_alloc_security(struct inode *inode)
 {
 	struct inode_security_label *ilabel;
+	struct appcl_pacl_entry pe;
+	size_t i;
 
 	ilabel = kmem_cache_zalloc(sel_inode_cache, GFP_NOFS);
 	if (!ilabel)
@@ -593,19 +685,23 @@ static int appcl_lsm_inode_alloc_security(struct inode *inode)
 	mutex_init(&ilabel->lock);
         INIT_LIST_HEAD(&ilabel->list);
 
-	size_t i;
-	struct appcl_pacl_entry pe;
 	for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
 		pe.inode_sec_pathname = NULL;
 		pe.e_perm = 0;
 		pe.e_tag = 0;
 		ilabel->a_entries[i] = pe;
         }
+	/*
+	 * Set inode_security_label default values
+	 */
 	ilabel->xvalue = APPCL_VALUE_UNLABELLED;
 	ilabel->valid_xvalue = INVALID_XV;
 	ilabel->a_count = 0;
 	ilabel->flags = 0;
 	ilabel->inode = inode;
+	/*
+	 * Set blank inode_security_label
+	 */
 	inode->i_security = ilabel;
 
 	return 0;
@@ -636,36 +732,86 @@ static void appcl_lsm_inode_free_security(struct inode *inode)
 	return;
 }
 
+/*
+ *
+ *      - general permission hooks
+ *      - uses appcl_check_permission_mask_match()
+ *        - pass inode security label, current credential,
+ *	  - && the requested permission mask
+ *
+ */
+
 static int appcl_lsm_inode_permission(struct inode *inode, int mask)
 {
-	const struct cred *c_cred;
 	struct inode_security_label *ilabel;
+	const struct cred *c_cred;
 
 	ilabel = inode->i_security;
+
 	if (!ilabel || !mask)
 		return 0;
 
+	/*
+	 * Fetch current credential
+	 */
 	c_cred = get_current_cred();
         validate_creds(c_cred);
 
         if (unlikely(IS_PRIVATE(inode)))
                 return 0;
 
-if (check_inode_path_match(inode, c_cred)) {
-	if (appcl_check_permission_mask_match(ilabel, c_cred, mask)) {
-		printk(KERN_ALERT "INODE PERMISSION: MATCH -EACCES: %d \n", mask);
-		put_cred(c_cred);
-		return -EACCES;
+	/*
+	 * Check current credential path against inode 'PACL' entries
+	 */
+	if (check_inode_path_match(inode, c_cred)) {
+		/*
+		 * Check requested permission mask against inode 'PACL' entries
+		 */
+		if (appcl_check_permission_mask_match(ilabel, c_cred, mask))
+			goto failout;
+		else
+			goto successout;
 	} else {
-		put_cred(c_cred);
-		return 0;
+		goto successout;
 	}
-}
 
+successout:
 	put_cred(c_cred);
 	return 0;
+
+failout:
+	put_cred(c_cred);
+	return -EACCES;
 }
 
+/*
+ *
+ *      - specific permission hooks
+ *      - uses appcl_check_rperm_match()
+ *        - pass inode security label, current credential,
+ *	  - && the specific permission to check
+ *
+ */
+
+static int appcl_lsm_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode)
+{
+	/*
+	 * Check for specific 'WRITE' permission
+	 */
+	return appcl_specific_perm_check(dir, MAY_WRITE);
+}
+
+static int appcl_lsm_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
+				  struct inode *new_dir, struct dentry *new_dentry)
+{
+	struct inode *inode = d_backing_inode(old_dentry);
+	/*
+	 * Check for specific 'WRITE' permission
+	 */
+	return appcl_specific_perm_check(inode, MAY_WRITE);
+}
+
+/*
 static int appcl_lsm_inode_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	return 0;
@@ -675,102 +821,73 @@ static int appcl_lsm_inode_getattr(const struct path *path)
 {
 	return 0;
 }
+*/
 
-/*
 static int appcl_lsm_inode_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
-	return 0;
+	/*
+ 	 * Check for specific 'WRITE' permission
+ 	 */
+	 return appcl_specific_perm_check(dir, MAY_WRITE);
 }
 static int appcl_lsm_inode_rmdir(struct inode *dir, struct dentry *dentry)
 {
-	return 0;
+	/*
+ 	 * Check for specific 'WRITE' permission
+ 	 */
+	 return appcl_specific_perm_check(dir, MAY_WRITE);
 }
 static int appcl_lsm_inode_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
-	return 0;
-}
-*/
-static int appcl_lsm_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
-				  struct inode *new_dir, struct dentry *new_dentry)
-{
-	struct inode *inode = d_backing_inode(old_dentry);
-	struct inode_security_label *ilabel = inode->i_security;
-
-	if (!ilabel)
-		return 0;
-
-	const char *i_xvalue = ilabel->xvalue;
-	if (i_xvalue != NULL) {
-		if (strlen(i_xvalue) > 2)
-			if (strcmp(i_xvalue, APPCL_VALUE_UNLABELLED))
-				printk(KERN_ALERT "INODE RENAME: I_XVALUE: %s \n", i_xvalue);
-	}
-
-	const struct cred *c_cred;
-	c_cred = get_current_cred();
-
-	if (check_inode_path_match(inode, c_cred)) {
-		if (appcl_check_rperm_match(ilabel, c_cred, MAY_WRITE, MAY_WRITE)) {
-			printk(KERN_ALERT "INODE RENAME: MATCH WRITE PERM \n");
-			put_cred(c_cred);
-			return -EACCES;
-		} else {
-			put_cred(c_cred);
-			return -EACCES;
-		}
-	}
-
-	put_cred(c_cred);
-	return 0;
+	/*
+ 	 * Check for specific 'WRITE' permission
+ 	 */
+	 return appcl_specific_perm_check(dir, MAY_WRITE);
 }
 
-static int appcl_lsm_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode)
-{
-	struct inode_security_label *ilabel = dir->i_security;
-	const struct cred *c_cred;
-	c_cred = get_current_cred();
-
-	if (check_inode_path_match(dir, c_cred)) {
-		if (appcl_check_rperm_match(ilabel, c_cred, MAY_WRITE, MAY_WRITE)) {
-			printk(KERN_ALERT "INODE CREATE: MATCH WRITE PERM \n");
-			put_cred(c_cred);
-			return 0;
-		} else {
-			put_cred(c_cred);
-			return -EACCES;
-		}
-	}
-
-	put_cred(c_cred);
-	return 0;
-}
-
-/*
 static int appcl_lsm_inode_readlink(struct dentry *dentry)
 {
-	return 0;
+	struct inode *inode = d_backing_inode(dentry);
+	/*
+	 * Check for specific 'READ' permission
+	 */
+	return appcl_specific_perm_check(inode, MAY_READ);
 }
 
 static int appcl_lsm_inode_follow_link(struct dentry *dentry, struct inode *inode, bool rcu)
 {
-	return 0;
+	struct inode *d_inode = d_backing_inode(dentry);
+	/*
+ 	 * Check for specific 'WRITE' permission
+ 	 */
+	 return appcl_specific_perm_check(d_inode, MAY_WRITE);
 }
 
 static int appcl_lsm_inode_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry)
 {
-	return 0;
+	struct inode *inode = d_backing_inode(old_dentry);
+	/*
+ 	 * Check for specific 'WRITE' permission
+ 	 */
+	 return appcl_specific_perm_check(inode, MAY_WRITE);
 }
 
 static int appcl_lsm_inode_unlink(struct inode *dir, struct dentry *dentry)
 {
-	return 0;
+	/*
+ 	 * Check for specific 'WRITE' permission
+ 	 */
+	 return appcl_specific_perm_check(dir, MAY_WRITE);
 }
 
 static int appcl_lsm_inode_symlink(struct inode *dir, struct dentry *dentry, const char *old_name)
 {
-	return 0;
+	/*
+ 	 * Check for specific 'WRITE' permission
+ 	 */
+	 return appcl_specific_perm_check(dir, MAY_WRITE);
 }
-
+/*
 static int appcl_lsm_inode_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	return 0;
@@ -849,7 +966,7 @@ static int appcl_lsm_file_permission(struct file *file, int mask)
 if (check_inode_path_match(inode, c_cred)) {
 	if (appcl_check_permission_mask_match(ilabel, c_cred, mask)) {
 		put_cred(c_cred);
-		printk(KERN_ALERT "INODE PERMISSION: MATCH -EACCES: %d \n", mask);
+		printk(KERN_ALERT "FILE PERMISSION: MATCH -EACCES: %d \n", mask);
 		return -EACCES;
 	} else {
 		put_cred(c_cred);
@@ -864,47 +981,27 @@ if (check_inode_path_match(inode, c_cred)) {
 static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
 {
         struct inode *inode = file_inode(file);
-        struct inode_security_label *ilabel;
-
-        ilabel = inode->i_security;
-        if (!ilabel)
-                return 0;
 	/*
-	const char *i_xvalue = ilabel->xvalue;
-	if (ilabel->xvalue != NULL) {
-		if (strlen(i_xvalue) > 2)
-			if (strcmp(i_xvalue, APPCL_VALUE_UNLABELLED))
-				printk(KERN_ALERT "FILE OPEN: I_XVALUE: %s \n", i_xvalue);
-	}
-	*/
-	const struct cred *c_cred;
-	c_cred = get_current_cred();
-
-if (check_inode_path_match(inode, c_cred)) {
-	if (appcl_check_rperm_match(ilabel, c_cred, MAY_READ, MAY_READ)) {
-		printk(KERN_ALERT "FILE OPEN: MATCH READ PERM \n");
-		put_cred(c_cred);
-		return 0;
-	} else {
-		put_cred(c_cred);
-		return -EACCES;
-	}
+ 	 * Check for specific 'READ' permission
+ 	 */
+	return appcl_specific_perm_check(inode, MAY_READ);
 }
 
-	put_cred(c_cred);
-        return 0;
-}
-/*
 static int appcl_lsm_file_receive(struct file *file)
 {
-	return 0;
+	struct inode *inode = file_inode(file);
+	/*
+ 	 * Check for specific 'WRITE' permission
+ 	 */
+	return appcl_specific_perm_check(inode, MAY_WRITE);
 }
-*/
+
+/*
 static int appcl_lsm_file_fcntl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	return 0;
 }
-
+*/
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
@@ -977,7 +1074,7 @@ static int appcl_lsm_bprm_set_creds(struct linux_binprm *bprm)
 	path_put(fpath);
 
         if (IS_ERR(fpath_name))
-                fpath_name = bprm->filename;
+                fpath_name = (char*)bprm->filename;
 
         if (fpath_name == NULL || strlen(fpath_name) < 1)
                 cred_path = APPCL_VALUE_UNLABELLED;
@@ -1057,51 +1154,51 @@ static void appcl_lsm_cred_transfer(struct cred *new, const struct cred *old)
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 static struct security_hook_list appcl_hooks[] = {
-	/* XATTR HOOKS */
+	/*
+	 * XATTR HOOKS
+	 */
 	LSM_HOOK_INIT(inode_setxattr, appcl_lsm_inode_setxattr),
 	LSM_HOOK_INIT(inode_post_setxattr, appcl_lsm_inode_post_setxattr),
 	LSM_HOOK_INIT(inode_getxattr, appcl_lsm_inode_getxattr),
-	//LSM_HOOK_INIT(inode_listxattr, appcl_lsm_inode_listxattr),
 	LSM_HOOK_INIT(inode_removexattr, appcl_lsm_inode_removexattr),
-	/* SUPERBLOCK HOOKS */
+	LSM_HOOK_INIT(d_instantiate, appcl_lsm_d_instantiate),
+	LSM_HOOK_INIT(inode_setsecurity, appcl_lsm_inode_setsecurity),
+	//LSM_HOOK_INIT(inode_init_security, appcl_lsm_inode_init_security),
+	/*
+	 * SUPERBLOCK HOOKS
+	 */
 	LSM_HOOK_INIT(sb_alloc_security, appcl_lsm_sb_alloc_security),
 	LSM_HOOK_INIT(sb_free_security, appcl_lsm_sb_free_security),
-	/* INODE HOOKS */
+	/*
+	 * INODE HOOKS
+	 */
 	LSM_HOOK_INIT(inode_alloc_security, appcl_lsm_inode_alloc_security),
         LSM_HOOK_INIT(inode_free_security, appcl_lsm_inode_free_security),
 	LSM_HOOK_INIT(inode_permission, appcl_lsm_inode_permission),
 	//LSM_HOOK_INIT(inode_setattr, appcl_lsm_inode_setattr),
 	//LSM_HOOK_INIT(inode_getattr, appcl_lsm_inode_getattr),
 	LSM_HOOK_INIT(inode_create, appcl_lsm_inode_create),
-	//LSM_HOOK_INIT(inode_link, appcl_lsm_inode_link),
-	//LSM_HOOK_INIT(inode_unlink, appcl_lsm_inode_unlink),
-	//LSM_HOOK_INIT(inode_symlink, appcl_lsm_inode_symlink),
-	//LSM_HOOK_INIT(inode_mkdir, appcl_lsm_inode_mkdir),
-	//LSM_HOOK_INIT(inode_rmdir, appcl_lsm_inode_rmdir),
-	//LSM_HOOK_INIT(inode_mknod, appcl_lsm_inode_mknod),
 	LSM_HOOK_INIT(inode_rename, appcl_lsm_inode_rename),
-	//LSM_HOOK_INIT(inode_readlink, appcl_lsm_inode_readlink),
-	//LSM_HOOK_INIT(inode_follow_link, appcl_lsm_inode_follow_link),
-	//LSM_HOOK_INIT(inode_init_security, appcl_lsm_inode_init_security),
-	LSM_HOOK_INIT(inode_setsecurity, appcl_lsm_inode_setsecurity),
-	//LSM_HOOK_INIT(inode_getsecurity, appcl_lsm_inode_getsecurity),
-	//LSM_HOOK_INIT(inode_listsecurity, appcl_lsm_inode_listsecurity),
-	LSM_HOOK_INIT(d_instantiate, appcl_lsm_d_instantiate),
-
-	//LSM_HOOK_INIT(ismaclabel, appcl_lsm_ismaclabel),
-	//LSM_HOOK_INIT(release_secctx, appcl_lsm_release_secctx),
-	//LSM_HOOK_INIT(inode_notifysecctx, appcl_lsm_inode_notifysecctx),
-	//LSM_HOOK_INIT(inode_setsecctx, appcl_lsm_inode_setsecctx),
-	//LSM_HOOK_INIT(inode_getsecctx, appcl_lsm_inode_getsecctx),
-
-	/* FILE HOOKS */
+	LSM_HOOK_INIT(inode_link, appcl_lsm_inode_link),
+	LSM_HOOK_INIT(inode_unlink, appcl_lsm_inode_unlink),
+	LSM_HOOK_INIT(inode_symlink, appcl_lsm_inode_symlink),
+	LSM_HOOK_INIT(inode_mkdir, appcl_lsm_inode_mkdir),
+	LSM_HOOK_INIT(inode_rmdir, appcl_lsm_inode_rmdir),
+	LSM_HOOK_INIT(inode_mknod, appcl_lsm_inode_mknod),
+	LSM_HOOK_INIT(inode_readlink, appcl_lsm_inode_readlink),
+	LSM_HOOK_INIT(inode_follow_link, appcl_lsm_inode_follow_link),
+	/*
+	 * FILE HOOKS
+	 */
 	LSM_HOOK_INIT(file_alloc_security, appcl_lsm_file_alloc_security),
 	LSM_HOOK_INIT(file_free_security, appcl_lsm_file_free_security),
 	LSM_HOOK_INIT(file_permission, appcl_lsm_file_permission),
-	LSM_HOOK_INIT(file_fcntl, appcl_lsm_file_fcntl),
+	//LSM_HOOK_INIT(file_fcntl, appcl_lsm_file_fcntl),
 	LSM_HOOK_INIT(file_open, appcl_lsm_file_open),
-	//LSM_HOOK_INIT(file_receive, appcl_lsm_file_receive),
-	/* CRED HOOKS */
+	LSM_HOOK_INIT(file_receive, appcl_lsm_file_receive),
+	/*
+	 * CRED HOOKS
+	 */
 	LSM_HOOK_INIT(bprm_set_creds, appcl_lsm_bprm_set_creds),
 	LSM_HOOK_INIT(cred_alloc_blank, appcl_lsm_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_free, appcl_lsm_cred_free),
@@ -1116,24 +1213,21 @@ static struct security_hook_list appcl_hooks[] = {
  *
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
- static void init_task_audit_data(void) {
 
- 	struct cred *cred;
-        struct task_audit_data *newtd;
- 	cred = get_current_cred();
+static void init_task_audit_data(void) {
+
+	struct cred *cred = (struct cred *)current->real_cred;
+	struct task_audit_data *newtd;
 
         newtd = kzalloc(sizeof(struct task_audit_data), GFP_KERNEL);
-        if (!newtd) {
-                put_cred(cred);
+        if (!newtd)
                 panic("AppCL LSM:  Failed to initialise initial task.\n");
-        }
 
  	newtd->bprm_pathname = APPCL_INIT_TASK;
         cred->security = newtd;
 
- 	put_cred(cred);
- 	return;
- }
+	return;
+}
 
 static int __init appcl_lsm_init(void)
 {

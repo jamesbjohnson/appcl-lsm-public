@@ -227,15 +227,15 @@ EXPORT_SYMBOL(appcl_check_rperm_match);
 
 int appcl_check_permission_file_match(struct file *file, struct inode *inode, const struct cred *cred)
 {
-        size_t i;
-        unsigned short c_perm = 0;
         struct inode_security_label *ilabel;
+        unsigned short c_perm = 0;
+        fmode_t file_mode = 0;
+        size_t i;
 
         ilabel = inode->i_security;
         if (!ilabel)
                 return 0;
 
-        fmode_t file_mode = 0;
         file_mode = file->f_mode;
 
         file_mode &= FMODE_READ | FMODE_WRITE | FMODE_EXEC | FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE |
@@ -441,11 +441,12 @@ EXPORT_SYMBOL(appcl_check_permission_mask_match);
 int check_inode_path_match(struct inode *inode, const struct cred *cred)
 {
        struct inode_security_label *ilabel;
+       unsigned int p_count = 0;
+
        ilabel = inode->i_security;
        if (!ilabel)
               return 0;
 
-       unsigned int p_count = 0;
        p_count = get_current_inode_perm_count(ilabel, cred);
 
        return p_count;

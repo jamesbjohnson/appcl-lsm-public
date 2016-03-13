@@ -39,50 +39,66 @@ Linux kernel security module to implement program based access control mechanism
 #include <stdbool.h>
 #include <linux/xattr.h>
 
-#define PACL_UNDEFINED_ID        (-1)
+/*
+ * xattr security namespace
+ */
+#define XATTR_APPCL_SUFFIX "appcl"
+#define XATTR_NAME_APPCL XATTR_SECURITY_PREFIX XATTR_APPCL_SUFFIX
 
-/* a_type field in acl_user_posix_entry_t */
-#define PACL_TYPE_ACCESS         (0x8000)
-#define PACL_TYPE_DEFAULT        (0x4000)
-
-/* e_tag entry in struct posix_acl_entry */
-//#define ACL_USER_OBJ           (0x01)
-#define APPCL_DEFINE                	(0x02)
-//#define ACL_USER               (0x02)
-//#define ACL_GROUP_OBJ          (0x04)
-#define APPCL_GROUP               	(0x08)
-//#define ACL_GROUP              (0x08)
-#define APPCL_DEFAULT                	(0x10)
-//#define ACL_MASK               (0x10)
-#define APPCL_OTHER               	(0x20)
-
-/* permissions in the e_perm field */
+/*
+ * e_perm entry in appcl_pacl_entry, permission values
+ */
 #define APPCL_READ                	(0x04)
 #define APPCL_WRITE               	(0x02)
 #define APPCL_EXECUTE             	(0x01)
 
-/* xattr e_perm representation */
+/*
+ * xattr e_perm representation
+ */
 #define XATTR_READ                	"r"
 #define XATTR_WRITE               	"w"
 #define XATTR_EXECUTE             	"x"
 
+/*
+ * xattr label definitions
+ */
 #define VALID_XV 			0
 #define INVALID_XV			1
+#define INITVALUELEN 			255
+#define LOWERVALUELEN 			4
 
-/* maximum entries in permission entries array */
+/*
+ * maximum entries in permission entries array [a_entries]
+ */
 #define APPCL_MAX_INODE_ENTRIES		10
-/* maximum label length */
+
+/*
+ * maximum label length
+ */
 #define APPCL_LNG_LABEL	 		128
-/* inode instantiated flag */
+
+/*
+ * inode inode_security_label->flags
+ */
 #define APPCL_INODE_INSTANT		8
+#define APPCL_ATTR_SET			16
 
-
+/*
+ * default label values
+ */
 #define APPCL_VALUE_UNLABELLED "-/appcl-unlabelled"
 #define APPCL_INIT_TASK "-/appcl-init-task"
+#define appcl_known_star "*"
+#define appcl_known_huh "?"
+#define appcl_known_default "DEFAULT"
 
-/* xattr security namespace */
-#define XATTR_APPCL_SUFFIX "appcl"
-#define XATTR_NAME_APPCL XATTR_SECURITY_PREFIX XATTR_APPCL_SUFFIX
+/*
+ * e_tag entry in appcl_pacl_entry
+ */
+#define APPCL_DEFINE                	(0x02)
+#define APPCL_GROUP               	(0x08)
+#define APPCL_DEFAULT                	(0x10)
+#define APPCL_OTHER               	(0x20)
 
 /*
  *
@@ -112,20 +128,26 @@ struct appcl_pacl_entry {
 struct inode_security_label {
 	const char			*xvalue; /* xattr representation */
 	int 				valid_xvalue;
+	/*
+	 * permission entries array
+	 */
 	struct appcl_pacl_entry 	a_entries[APPCL_MAX_INODE_ENTRIES];
 	unsigned int            	a_count;
 	int				flags;
 	union {
-                struct list_head list;  /* list of file_security_label */
-                struct rcu_head rcu;    /* for freeing the inode_security_struct */
+                struct list_head list;  /* list of inode_security_label */
+                struct rcu_head rcu;    /* for freeing the inode_security_label */
         };
 	struct inode *inode;    /* back pointer to inode object */
         struct mutex lock;
 };
 
-#define appcl_known_star "*"
-#define appcl_known_huh "?"
-#define appcl_known_default "DEFAULT"
+/*
+ *
+ * superblock_security_label
+ *      - stored at superblock->s_security
+ *
+ */
 
 struct superblock_security_label {
 	struct super_block *sb;
@@ -136,7 +158,7 @@ struct superblock_security_label {
 
 /*
  *
- * file_security_label
+ * file_security_label (currently unused)
  *      - stored at file->f_security
  *      - entries_count, count of permission entries for file object
  *	- perms, current permission for file object
@@ -148,7 +170,7 @@ struct file_security_label {
 	unsigned int		entries_count;
         union {
         	struct list_head list;  /* list of file_security_label */
-                struct rcu_head rcu;    /* for freeing the inode_security_struct */
+                struct rcu_head rcu;    /* for freeing the file_security_label */
         };
 	struct file *file;    /* back pointer to file object */
         struct mutex lock;
