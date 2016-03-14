@@ -98,16 +98,12 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 {
 	struct appcl_pacl_entry t_pe;
 	const char *path = NULL;
+	const char *x_path = NULL;
 	char *permSplit = NULL;
 	char delim[1] = ";"; char split[1] = ":";
 	char perm[1];
 	int pe_perm = 0;
 	int len = 0;
-
-	/* test paths */
-	const char *nano = "/bin/nano";
-	const char *vim = "/usr/bin/vim.basic";
-	const char *cat = "/bin/cat";
 
 	len = strlen(value);
 
@@ -117,6 +113,7 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	if ((permSplit = strsep(&value, split)) != NULL) {
 		len = strlen(permSplit);
 		path = kstrdup(permSplit, GFP_KERNEL);
+		x_path = kstrdup(path, GFP_KERNEL);
 	}
 
 	/*
@@ -136,24 +133,30 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 			pe_perm = APPCL_OTHER;
 	}
 
-	/* test paths */
-	if (path != NULL) {
-		if (strncmp(path, nano, APPCL_LNG_LABEL) == 0) {
-			t_pe.inode_sec_pathname = nano;
-		} else if (strncmp(path, vim, APPCL_LNG_LABEL) == 0){
-			t_pe.inode_sec_pathname = vim;
-		} else if (strncmp(path, cat, APPCL_LNG_LABEL) == 0){
-			t_pe.inode_sec_pathname = cat;
-		} else {
+	/*
+	 * Set path value in appcl_pacl_entry
+	 */
+	if (x_path != NULL) {
+		if (strlen(x_path) > LOWERVALUELEN)
+			t_pe.inode_sec_pathname = kstrdup(path, GFP_KERNEL);
+		else
 			t_pe.inode_sec_pathname = APPCL_VALUE_UNLABELLED;
-		}
+	} else {
+		t_pe.inode_sec_pathname = APPCL_VALUE_UNLABELLED;
 	}
 
+	/*
+	 * Set permission value in appcl_pacl_entry
+	 */
 	if (pe_perm)
 		t_pe.e_perm = pe_perm;
 	else
 		t_pe.e_perm = APPCL_OTHER;
 
+	/*
+	 * e_tag - currently unused
+	 * 	 - APPCL_DEFINE - permissions defined by AppCL LSM module
+	 */
 	t_pe.e_tag = APPCL_DEFINE;
 
 	return t_pe;

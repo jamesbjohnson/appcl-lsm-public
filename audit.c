@@ -238,10 +238,7 @@ int appcl_check_permission_file_match(struct file *file, struct inode *inode, co
 
         file_mode = file->f_mode;
 
-        file_mode &= FMODE_READ | FMODE_WRITE | FMODE_EXEC | FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE |
-                        FMODE_EXCL | FMODE_NDELAY | FMODE_WRITE_IOCTL | FMODE_32BITHASH | FMODE_64BITHASH |
-                        FMODE_RANDOM | FMODE_PATH | FMODE_ATOMIC_POS | FMODE_WRITER | FMODE_CAN_READ |
-                        FMODE_CAN_WRITE | FMODE_NONOTIFY;
+        file_mode &= FMODE_READ | FMODE_WRITE | FMODE_EXEC;
 
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
                 c_perm = get_next_perm_enforce(ilabel, cred, i);
@@ -271,99 +268,6 @@ int appcl_check_permission_file_match(struct file *file, struct inode *inode, co
                                                 return 0;
                                         }
                                 break;
-
-                                case FMODE_LSEEK:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE LSEEK SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_PREAD:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE PREAD SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_PWRITE:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE PWRITE SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_NDELAY:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE NDELAY SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_EXCL:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE EXCL SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_WRITE_IOCTL:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE WRITE_IOCTL SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_32BITHASH:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE 32BITHASH SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_64BITHASH:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE 64BITHASH SET \n");
-                                                return 0;
-                                        }
-                                break;
-
-                                case FMODE_RANDOM:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE RANDOM SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_PATH:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE PATH SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_ATOMIC_POS:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE ATOMIC_POS SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_WRITER:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE WRITER SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_CAN_READ:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE CAN_READ SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_CAN_WRITE:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE CAN_WRITE SET \n");
-                                                return 0;
-                                        }
-                                break;
-                                case FMODE_NONOTIFY:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE NONOTIFY SET \n");
-                                                return 0;
-                                        }
-                                break;
-
                         }
                 }
         }
