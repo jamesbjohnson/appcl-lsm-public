@@ -237,6 +237,58 @@ failout:
 	return -EACCES;
 }
 
+/*
+ *
+ *      - general permission check
+ *      - uses appcl_check_permission_mask_match()
+ *        - pass inode security label, current credential,
+ *	  - && the requested permission mask to check
+ *
+ */
+
+static int appcl_mask_perm_check(struct inode *inode, int mask)
+{
+	struct inode_security_label *ilabel;
+	const struct cred *c_cred;
+
+	ilabel = inode->i_security;
+
+	if (!ilabel || !mask)
+		return 0;
+
+	/*
+	 * Fetch current credential
+	 */
+	c_cred = get_current_cred();
+        validate_creds(c_cred);
+
+        if (unlikely(IS_PRIVATE(inode)))
+                return 0;
+
+	/*
+	 * Check current credential path against inode 'PACL' entries
+	 */
+	if (check_inode_path_match(inode, c_cred)) {
+		/*
+		 * Check requested permission mask against inode 'PACL' entries
+		 */
+		if (appcl_check_permission_mask_match(ilabel, c_cred, mask))
+			goto failout;
+		else
+			goto successout;
+	} else {
+		goto successout;
+	}
+
+successout:
+	put_cred(c_cred);
+	return 0;
+
+failout:
+	put_cred(c_cred);
+	return -EACCES;
+}
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
  *
@@ -746,45 +798,10 @@ static void appcl_lsm_inode_free_security(struct inode *inode)
 
 static int appcl_lsm_inode_permission(struct inode *inode, int mask)
 {
-	struct inode_security_label *ilabel;
-	const struct cred *c_cred;
-
-	ilabel = inode->i_security;
-
-	if (!ilabel || !mask)
-		return 0;
-
 	/*
-	 * Fetch current credential
+	 * Check for requested permission 'mask'
 	 */
-	c_cred = get_current_cred();
-        validate_creds(c_cred);
-
-        if (unlikely(IS_PRIVATE(inode)))
-                return 0;
-
-	/*
-	 * Check current credential path against inode 'PACL' entries
-	 */
-	if (check_inode_path_match(inode, c_cred)) {
-		/*
-		 * Check requested permission mask against inode 'PACL' entries
-		 */
-		if (appcl_check_permission_mask_match(ilabel, c_cred, mask))
-			goto failout;
-		else
-			goto successout;
-	} else {
-		goto successout;
-	}
-
-successout:
-	put_cred(c_cred);
-	return 0;
-
-failout:
-	put_cred(c_cred);
-	return -EACCES;
+	return appcl_mask_perm_check(inode, mask);
 }
 
 /*
@@ -952,33 +969,11 @@ static void appcl_lsm_file_free_security(struct file *file)
 
 static int appcl_lsm_file_permission(struct file *file, int mask)
 {
-        struct inode *inode = file_inode(file);
-	const struct cred *c_cred;
-	struct inode_security_label *ilabel;
-
-	ilabel = inode->i_security;
-	if (!ilabel || !mask)
-		return 0;
-
-	c_cred = get_current_cred();
-	validate_creds(c_cred);
-
-	if (unlikely(IS_PRIVATE(inode)))
-		return 0;
-
-if (check_inode_path_match(inode, c_cred)) {
-	if (appcl_check_permission_mask_match(ilabel, c_cred, mask)) {
-		put_cred(c_cred);
-		printk(KERN_ALERT "FILE PERMISSION: MATCH -EACCES: %d \n", mask);
-		return -EACCES;
-	} else {
-		put_cred(c_cred);
-		return 0;
-	}
-}
-
-	put_cred(c_cred);
-	return 0;
+	struct inode *inode = file_inode(file);
+	/*
+	 * Check for requested permission 'mask'
+	 */
+	return appcl_mask_perm_check(inode, mask);
 }
 
 static int appcl_lsm_file_open(struct file *file, const struct cred *cred)
