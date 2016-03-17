@@ -114,6 +114,13 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 		len = strlen(permSplit);
 		path = kstrdup(permSplit, GFP_KERNEL);
 		x_path = kstrdup(path, GFP_KERNEL);
+
+		/*
+		 * Check for default behaviour value
+		 */
+		if ((strcmp(x_path, APPCL_DEFAULT_DENY) == 0) ||
+			(strcmp(x_path, APPCL_DEFAULT_ALLOW) == 0))
+			goto outdefault;
 	}
 
 	/*
@@ -138,7 +145,7 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	 */
 	if (x_path != NULL) {
 		if (strlen(x_path) > LOWERVALUELEN)
-			t_pe.inode_sec_pathname = kstrdup(path, GFP_KERNEL);
+			t_pe.inode_sec_pathname = kstrdup(x_path, GFP_KERNEL);
 		else
 			t_pe.inode_sec_pathname = APPCL_VALUE_UNLABELLED;
 	} else {
@@ -158,6 +165,20 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	 * 	 - APPCL_DEFINE - permissions defined by AppCL LSM module
 	 */
 	t_pe.e_tag = APPCL_DEFINE;
+
+	return t_pe;
+/*
+ * Default behaviour out
+ */
+outdefault:
+	t_pe.inode_sec_pathname = kstrdup(x_path, GFP_KERNEL);
+
+	if (strcmp(x_path, APPCL_DEFAULT_DENY) == 0)
+		t_pe.e_perm = APPCL__DENY;
+	else
+		t_pe.e_perm = APPCL__ALLOW;
+
+	t_pe.e_tag = APPCL_DEFAULT;
 
 	return t_pe;
 }
@@ -197,6 +218,7 @@ static int isvalid_xvalue(const char *xvalue)
 static int appcl_specific_perm_check(struct inode *inode, int perm)
 {
 	struct inode_security_label *ilabel = inode->i_security;
+	const char *d_behaviour = APPCL_DEFAULT_ALLOW;
 	const struct cred *c_cred;
 
 	if (!ilabel)
@@ -207,9 +229,10 @@ static int appcl_specific_perm_check(struct inode *inode, int perm)
 	mutex_lock(&ilabel->lock);
 
 	/*
-	 * Fetch current credential
+	 * Fetch current credential and default behaviour state
 	 */
 	c_cred = get_current_cred();
+	d_behaviour = ilabel->d_behaviour;
 
 	/*
 	 * Check current credential path against inode 'PACL' entries
@@ -223,7 +246,14 @@ static int appcl_specific_perm_check(struct inode *inode, int perm)
 		else
 			goto failout;
 	} else {
-		goto successout;
+		/*
+		 * Checks DENY default behaviour
+		 * Return -EACCES if true
+		 */
+		if (strncmp(d_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
+			goto failout;
+		else
+			goto successout;
 	}
 
 successout:
@@ -249,6 +279,7 @@ failout:
 static int appcl_mask_perm_check(struct inode *inode, int mask)
 {
 	struct inode_security_label *ilabel;
+	const char *d_behaviour = APPCL_DEFAULT_ALLOW;
 	const struct cred *c_cred;
 
 	ilabel = inode->i_security;
@@ -257,10 +288,11 @@ static int appcl_mask_perm_check(struct inode *inode, int mask)
 		return 0;
 
 	/*
-	 * Fetch current credential
+	 * Fetch current credential and default behaviour state
 	 */
 	c_cred = get_current_cred();
         validate_creds(c_cred);
+	d_behaviour = ilabel->d_behaviour;
 
         if (unlikely(IS_PRIVATE(inode)))
                 return 0;
@@ -277,7 +309,14 @@ static int appcl_mask_perm_check(struct inode *inode, int mask)
 		else
 			goto successout;
 	} else {
-		goto successout;
+		/*
+		 * Checks DENY default behaviour
+		 * Return -EACCES if true
+		 */
+		if (strncmp(d_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
+			goto failout;
+		else
+			goto successout;
 	}
 
 successout:
@@ -355,6 +394,8 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 	struct inode *inode = d_backing_inode(dentry);
 	struct inode_security_label *ilabel = inode->i_security;
 	struct appcl_pacl_entry pe;
+	const char *d_behaviour = APPCL_DEFAULT_ALLOW;
+	const char *t_behaviour = APPCL_DEFAULT_ALLOW;
 	const char *xvalue;
 	size_t i;
 
@@ -365,7 +406,6 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 	 */
 	if (strncmp(name, XATTR_NAME_APPCL, sizeof XATTR_NAME_APPCL - 1) == 0) {
 		if (value) {
-
 			char *temp = (char*)value;
 			const char *tempx = kstrdup(temp, GFP_KERNEL);
 			char *opt = NULL;
@@ -381,12 +421,26 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 				if ((opt = strsep(&temp, delim)) != NULL) {
 					pe = make_appcl_entry(opt);
 					ilabel->a_entries[i] = pe;
+					/*
+					 * Checks default DENY case
+					 */
+					t_behaviour = pe.inode_sec_pathname;
+					if (strncmp(t_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
+						d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
 				} else {
 					break;
 				}
 			}
 
 			ilabel->a_count = i - 1;
+
+			/*
+			 * Checks DENY default behaviour, update label if true
+			 */
+			if (strncmp(d_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
+				ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
+			else
+				ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_ALLOW, GFP_KERNEL);
 
 			/*
 			 * Set inodes 'xvalue' from extended attribute.
@@ -403,7 +457,6 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 			ilabel->valid_xvalue = isvalid_xvalue(ilabel->xvalue);
 			ilabel->flags = APPCL_ATTR_SET;
 			ilabel->inode = inode;
-
 		}
 	}
 
@@ -452,6 +505,8 @@ static int inode_do_init(struct inode *inode, struct dentry *dentry)
 {
 	struct inode_security_label *ilabel = inode->i_security;
 	struct dentry *x_dentry;
+	const char *d_behaviour = APPCL_DEFAULT_ALLOW;
+	const char *t_behaviour = APPCL_DEFAULT_ALLOW;
 	const char *xvalue = NULL;
 	char *value = NULL;
 	char *final_xvalue = NULL;
@@ -578,6 +633,12 @@ static int inode_do_init(struct inode *inode, struct dentry *dentry)
 					if ((opt = strsep(&temp, delim)) != NULL) {
 						pe = make_appcl_entry(opt);
 						ilabel->a_entries[i] = pe;
+						/*
+						 * Checks default DENY case
+						 */
+						t_behaviour = pe.inode_sec_pathname;
+						if (strncmp(t_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
+							d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
 					} else {
 						break;
 					}
@@ -587,6 +648,14 @@ static int inode_do_init(struct inode *inode, struct dentry *dentry)
 			dput(x_dentry);
 			kfree(value);
 	}
+
+	/*
+	 * Checks DENY default behaviour, update label if true
+	 */
+	if (strncmp(d_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
+		ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
+	else
+		ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_ALLOW, GFP_KERNEL);
 
 	/*
 	 * Set inodes 'xvalue' from extended attribute.
@@ -628,17 +697,19 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 {
 	struct inode_security_label *ilabel = inode->i_security;
 	struct appcl_pacl_entry pe;
+	const char *d_behaviour = APPCL_DEFAULT_ALLOW;
+	const char *t_behaviour = APPCL_DEFAULT_ALLOW;
 	const char *xvalue;
 	size_t i;
-
-	if (strcmp(name, XATTR_APPCL_SUFFIX))
-		return -EOPNOTSUPP;
 
 	if (value == NULL || size > APPCL_LNG_LABEL || size == 0)
 		return -EINVAL;
 
+	/*
+	 * Only process AppCL namespace extended attribute
+	 */
+	if (strncmp(name, XATTR_APPCL_SUFFIX, sizeof XATTR_APPCL_SUFFIX - 1) == 0) {
 		if (value) {
-
 			char *temp = (char*)value;
 			const char *tempx = kstrdup(temp, GFP_KERNEL);
 			char *opt = NULL;
@@ -654,12 +725,24 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 				if ((opt = strsep(&temp, delim)) != NULL) {
 					pe = make_appcl_entry(opt);
 					ilabel->a_entries[i] = pe;
+					/*
+					 * Checks default DENY case
+					 */
+					t_behaviour = pe.inode_sec_pathname;
+					if (strncmp(t_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
+						d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
 				} else {
 					break;
 				}
 			}
 
 			ilabel->a_count = i - 1;
+
+			/*
+			 * Checks DENY default behaviour, update label if true
+			 */
+			if (strncmp(d_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
+				ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
 
 			/*
 			 * Set inodes 'xvalue' from extended attribute.
@@ -676,7 +759,11 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 			ilabel->valid_xvalue = isvalid_xvalue(ilabel->xvalue);
 			ilabel->flags = APPCL_ATTR_SET;
 			ilabel->inode = inode;
+
 		}
+	} else {
+		return -EOPNOTSUPP;
+	}
 
 	return 0;
 }
@@ -750,6 +837,7 @@ static int appcl_lsm_inode_alloc_security(struct inode *inode)
 	 * Set inode_security_label default values
 	 */
 	ilabel->xvalue = APPCL_VALUE_UNLABELLED;
+	ilabel->d_behaviour = APPCL_DEFAULT_ALLOW;
 	ilabel->valid_xvalue = INVALID_XV;
 	ilabel->a_count = 0;
 	ilabel->flags = 0;

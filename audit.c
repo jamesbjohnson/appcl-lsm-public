@@ -173,7 +173,7 @@ unsigned int get_current_inode_perm_count(struct inode_security_label *ilabel, c
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
                 struct appcl_pacl_entry entry;
                 entry = ilabel->a_entries[i];
-                if (entry.e_perm) {
+                if (entry.e_tag) {
                         const char *sec_pathname = "/";
                         sec_pathname = entry.inode_sec_pathname;
                         if (check_current_cred_path(sec_pathname, cred))

@@ -46,11 +46,22 @@ Linux kernel security module to implement program based access control mechanism
 #define XATTR_NAME_APPCL XATTR_SECURITY_PREFIX XATTR_APPCL_SUFFIX
 
 /*
+ * Default behaviour
+ * - ALLOW, blacklisting
+ * - DENY, whitelisting
+ */
+#define APPCL_DEFAULT_ALLOW "allow"
+#define APPCL__ALLOW 			0
+#define APPCL_DEFAULT_DENY "deny"
+#define APPCL__DENY			1
+
+/*
  * e_perm entry in appcl_pacl_entry, permission values
  */
 #define APPCL_READ                	(0x04)
 #define APPCL_WRITE               	(0x02)
 #define APPCL_EXECUTE             	(0x01)
+#define APPCL_DEFAULT_PERM             	(0x00)
 
 /*
  * xattr e_perm representation
@@ -127,13 +138,14 @@ struct appcl_pacl_entry {
 
 struct inode_security_label {
 	const char			*xvalue; /* xattr representation */
-	int 				valid_xvalue;
+	const char 			*d_behaviour; /* default behaviour */
 	/*
 	 * permission entries array
 	 */
 	struct appcl_pacl_entry 	a_entries[APPCL_MAX_INODE_ENTRIES];
-	unsigned int            	a_count;
+	unsigned int            	a_count; /* count of permission entries */
 	int				flags;
+	int 				valid_xvalue;
 	union {
                 struct list_head list;  /* list of inode_security_label */
                 struct rcu_head rcu;    /* for freeing the inode_security_label */
