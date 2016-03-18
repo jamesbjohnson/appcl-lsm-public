@@ -297,6 +297,8 @@ static int appcl_mask_perm_check(struct inode *inode, int mask)
         if (unlikely(IS_PRIVATE(inode)))
                 return 0;
 
+	mutex_lock(&ilabel->lock);
+
 	/*
 	 * Check current credential path against inode 'PACL' entries
 	 */
@@ -320,10 +322,12 @@ static int appcl_mask_perm_check(struct inode *inode, int mask)
 	}
 
 successout:
+	mutex_unlock(&ilabel->lock);
 	put_cred(c_cred);
 	return 0;
 
 failout:
+	mutex_unlock(&ilabel->lock);
 	put_cred(c_cred);
 	return -EACCES;
 }
@@ -417,6 +421,7 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 			 * Parse extended attribute value to 'PACL entries'
 			 * to store in a_entries array of security label
 			 */
+			mutex_lock(&ilabel->lock);
 			for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
 				if ((opt = strsep(&temp, delim)) != NULL) {
 					pe = make_appcl_entry(opt);
@@ -433,6 +438,7 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 			}
 
 			ilabel->a_count = i - 1;
+			mutex_unlock(&ilabel->lock);
 
 			/*
 			 * Checks DENY default behaviour, update label if true
@@ -721,6 +727,7 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 			 * Parse extended attribute value to 'PACL entries'
 			 * to store in a_entries array of security label
 			 */
+			mutex_lock(&ilabel->lock);
 			for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
 				if ((opt = strsep(&temp, delim)) != NULL) {
 					pe = make_appcl_entry(opt);
@@ -737,6 +744,7 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 			}
 
 			ilabel->a_count = i - 1;
+			mutex_unlock(&ilabel->lock);
 
 			/*
 			 * Checks DENY default behaviour, update label if true
