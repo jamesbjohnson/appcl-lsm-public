@@ -70,7 +70,7 @@ It populates the security information when a user sets an extended attribute (ap
 python appcl.py -h
 
 - DESCRIPTION
-The appcl.py script handles the extended attributes associated with the AppCL LSM security module. The setfattr and getfattr system utilities can also be used to manage extended attributes. If using these utilities the appcl security namespace must be specified [-n security.appcl] for AppCL LSM to process and enforce the attribute. The attr package is still required for appcl.py functionality.
+- The appcl.py script handles the extended attributes associated with the AppCL LSM security module. The setfattr and getfattr system utilities can also be used to manage extended attributes. If using these utilities the appcl security namespace must be specified [-n security.appcl] for AppCL LSM to process and enforce the attribute. The attr package is still required for appcl.py functionality.
 
 - EXAMPLE USAGE
 -- Set Attributes:
