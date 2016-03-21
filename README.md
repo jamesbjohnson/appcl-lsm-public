@@ -7,16 +7,16 @@
 
 - Final year project at Leeds Beckett University, BSc (Hons) Computer Forensics and Security
 
-#appcl_lsm.c
+##appcl_lsm.c
 - Contains the Linux Security Module (LSM) hook functions
 - Module initialisation and security module registration
 
-#appcl_lsm.h
+##appcl_lsm.h
 - Defines kernel structure security labels
 - Defines PACL permission entries
 - Defines AppCL LSM values and labels
 
-#audit.c
+##audit.c
 - Audit functions for permforming access control (key audit functions detailed below)
 - check_current_cred_path()
         - Compares PACL pathname, with current credentials path name
@@ -25,7 +25,7 @@
 - appcl_check_rperm_match()
         - Check for a specific requested permission, in inode PACL entries
 
-#audit.h
+##audit.h
 - defines audit functions
 - audit specific values and labels
 
