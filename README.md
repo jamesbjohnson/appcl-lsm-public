@@ -56,43 +56,43 @@ It populates the security information when a user sets an extended attribute (ap
 
 #Extended attribute format
 - The extended attribute value takes the following format:
-# /path/to/app:perm;
+#### /path/to/app:perm;
 
 - Multiple permission entries can be set in the following:
-# /path/to/app:perm;/path/to/app:perm;/path/to/app:perm;
+#### /path/to/app:perm;/path/to/app:perm;/path/to/app:perm;
 
 - Set the default DENY behaviour with the deny attribute [deny:-;]:
-# /path/to/app:perm;deny:-;
+#### /path/to/app:perm;deny:-;
 
 #appcl.py
 - Python tool to manage the security labelling of files/directories for the AppCL LSM access control module [appcl-lsm/security-config/tools/appcl.py].
 - Help:
 python appcl.py -h
 
-- DESCRIPTION
+## DESCRIPTION
 - The appcl.py script handles the extended attributes associated with the AppCL LSM security module. The setfattr and getfattr system utilities can also be used to manage extended attributes. If using these utilities the appcl security namespace must be specified [-n security.appcl] for AppCL LSM to process and enforce the attribute. The attr package is still required for appcl.py functionality.
 
-- EXAMPLE USAGE
--- Set Attributes:
+## EXAMPLE USAGE
+#### Set Attributes:
 - Directory - python appcl.py --dir <input-directory> --set <xattr-value>
 - File - python appcl.py --file <input-file> --set <xattr-value>
--- Get Attributes:
+#### Get Attributes:
 - Directory - python appcl.py --dir <input-directory> --get
 - File - python appcl.py --file <input-file> --get
--- Remove Attributes:
+#### Remove Attributes:
 - Directory - python appcl.py --dir <input-directory> --remove
 - File - python appcl.py --file <input-file> --remove
 
-- OPTIONS
---   -f file, --file=file
+## OPTIONS
+######   -f file, --file=file
 - Specifies a file input.
---   -d directory, --dir=directory
+######   -d directory, --dir=directory
 - Specifies a directory input.
---   -v, --set
+######   -v, --set
 - Sets the new AppCL LSM value of the extended attribute, and associated permissions.
---   -g, --get
+######   -g, --get
 - View the AppCL LSM stored extended attribute for file/directory contents.
---   -x, --remove
+######   -x, --remove
 - Remove the AppCL LSM extended attribute and associated permission entries.
---   -h, --help
+######   -h, --help
 - Help page
