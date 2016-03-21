@@ -76,9 +76,11 @@ python appcl.py -h
 #### Set Attributes:
 - Directory - python appcl.py --dir <input-directory> --set <xattr-value>
 - File - python appcl.py --file <input-file> --set <xattr-value>
+
 #### Get Attributes:
 - Directory - python appcl.py --dir <input-directory> --get
 - File - python appcl.py --file <input-file> --get
+
 #### Remove Attributes:
 - Directory - python appcl.py --dir <input-directory> --remove
 - File - python appcl.py --file <input-file> --remove
@@ -86,13 +88,18 @@ python appcl.py -h
 ## OPTIONS
 ######   -f file, --file=file
 - Specifies a file input.
+
 ######   -d directory, --dir=directory
 - Specifies a directory input.
+
 ######   -v, --set
 - Sets the new AppCL LSM value of the extended attribute, and associated permissions.
+
 ######   -g, --get
 - View the AppCL LSM stored extended attribute for file/directory contents.
+
 ######   -x, --remove
 - Remove the AppCL LSM extended attribute and associated permission entries.
+
 ######   -h, --help
 - Help page
