@@ -9,7 +9,7 @@
 #    The appcl.py script handles the extended attributes associated with the
 #    AppCL LSM security module.
 #    The setfattr and getfattr system utilities can also be used to manage
-#    extended attributes. f using these utilities the appcl security namespace
+#    extended attributes. If using these utilities the appcl security namespace
 #    must be specified [-n security.appcl] for AppCL LSM to process and
 #    enforce the attribute.
 #    The attr package is still required for appcl.py functionality.
@@ -60,12 +60,15 @@
 import sys, getopt
 import subprocess
 import os
+from sys import version_info
 
 def main(argv):
+        NL = '\n'
         # Default command options
         SET = 'setfattr'
         GET = 'getfattr'
         APPCL_NS = 'security.appcl'
+        GET_BIN = 'whereis -b '
 
         # 'dir' flag indicates -d arg and directory input
         # 'file' flag indicates -f arg and file input
@@ -79,8 +82,16 @@ def main(argv):
         inputdir = ''
         inputvalue = ''
 
+        # guided VARS
+        g_prog_input = ''
+        g_perm_input = ''
+        g_valid_perm = 0
+        g_deny_flag = 0
+
+        py3 = version_info[0] > 2;
+
         try:
-            opts, args = getopt.getopt(argv, "hd:f:v:gx", ["help", "dir=", "file=", "set=", "get", "remove"])
+            opts, args = getopt.getopt(argv, "hd:f:v:gxt", ["help", "dir=", "file=", "set=", "get", "remove", "guided"])
         except getopt.GetoptError:
             print '\nError: please read the help page for usage'
             print '\t python appcl.py --help\n'
@@ -117,6 +128,58 @@ def main(argv):
                 print '\t-h, --help'
                 print '\tHelp page \n'
                 sys.exit()
+            elif opt in ('-t', '--guided'):
+                print '\n*** GUIDED MODE ***\n'
+                if py3:
+                    g_prog_input = input("Please enter the program name: ")
+                else:
+                    g_prog_input = raw_input("Please enter the program name: ")
+
+                command = GET_BIN+g_prog_input
+                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None, shell=True)
+                output = process.communicate()
+
+                print output[0]
+                path_array = output[0].split(" ")
+
+                while (g_valid_perm == 0):
+                    if py3:
+                        g_perm_input = input("Please enter the permission to grant the program: \n" + path_array[0] + "\n\n[R]ead, [W]rite, e[X]ecute: ")
+                    else:
+                        g_perm_input = raw_input("Please enter the permission to grant the program: \n" + path_array[0] + "\n\n[R]ead, [W]rite, e[X]ecute: ")
+                    if (g_perm_input == "R" or g_perm_input == "r"):
+                        g_valid_perm = 1
+                    elif (g_perm_input == "W" or g_perm_input == "w"):
+                        g_valid_perm = 1
+                    elif (g_perm_input == "X" or g_perm_input == "x"):
+                        g_valid_perm = 1
+
+                g_valid_perm = 0
+                while (g_valid_perm == 0):
+                    if py3:
+                        deny_input = input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
+                    else:
+                        deny_input = raw_input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
+                    if (deny_input == "Y" or deny_input == "y"):
+                        g_valid_perm = 1
+                        g_deny_flag = 1
+                    elif (deny_input == "N" or deny_input == "n"):
+                        g_valid_perm = 1
+
+                path_array.pop(0)
+
+                for path in path_array:
+                    path = path.strip()
+                    inputvalue = inputvalue+path+":"+g_perm_input+";"
+
+                if (g_deny_flag == 1):
+                    inputvalue = inputvalue+"deny:-;"
+
+                inputvalue = inputvalue.strip()
+
+                opflag = 'set'
+                print NL+inputvalue+NL
+
             # '-d' arg specifies directory
             elif opt in ("-d", "--dir"):
                 inputdir = arg
