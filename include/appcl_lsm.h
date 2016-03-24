@@ -81,7 +81,7 @@ Linux kernel security module to implement program based access control mechanism
 /*
  * maximum entries in permission entries array [a_entries]
  */
-#define APPCL_MAX_INODE_ENTRIES		10
+#define APPCL_MAX_INODE_ENTRIES		32
 
 /*
  * maximum label length

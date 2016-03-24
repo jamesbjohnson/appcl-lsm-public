@@ -82,16 +82,18 @@ def main(argv):
         inputdir = ''
         inputvalue = ''
 
-        # guided VARS
+        # build VARS
         g_prog_input = ''
         g_perm_input = ''
         g_valid_perm = 0
         g_deny_flag = 0
+        g_deny_set = 0
+        g_end_build = 0
 
         py3 = version_info[0] > 2;
 
         try:
-            opts, args = getopt.getopt(argv, "hd:f:v:gxt", ["help", "dir=", "file=", "set=", "get", "remove", "guided"])
+            opts, args = getopt.getopt(argv, "hd:f:v:gxb", ["help", "dir=", "file=", "set=", "get", "remove", "build"])
         except getopt.GetoptError:
             print '\nError: please read the help page for usage'
             print '\t python appcl.py --help\n'
@@ -128,57 +130,80 @@ def main(argv):
                 print '\t-h, --help'
                 print '\tHelp page \n'
                 sys.exit()
-            elif opt in ('-t', '--guided'):
-                print '\n*** GUIDED MODE ***\n'
-                if py3:
-                    g_prog_input = input("Please enter the program name: ")
-                else:
-                    g_prog_input = raw_input("Please enter the program name: ")
-
-                command = GET_BIN+g_prog_input
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None, shell=True)
-                output = process.communicate()
-
-                print output[0]
-                path_array = output[0].split(" ")
-
-                while (g_valid_perm == 0):
+            elif opt in ('-b', '--build'):
+                print '\n*** BUILD MODE ***'
+                while True:
                     if py3:
-                        g_perm_input = input("Please enter the permission to grant the program: \n" + path_array[0] + "\n\n[R]ead, [W]rite, e[X]ecute: ")
+                        g_prog_input = input("\nPlease enter the program name: ")
                     else:
-                        g_perm_input = raw_input("Please enter the permission to grant the program: \n" + path_array[0] + "\n\n[R]ead, [W]rite, e[X]ecute: ")
-                    if (g_perm_input == "R" or g_perm_input == "r"):
-                        g_valid_perm = 1
-                    elif (g_perm_input == "W" or g_perm_input == "w"):
-                        g_valid_perm = 1
-                    elif (g_perm_input == "X" or g_perm_input == "x"):
-                        g_valid_perm = 1
+                        g_prog_input = raw_input("\nPlease enter the program name: ")
 
-                g_valid_perm = 0
-                while (g_valid_perm == 0):
-                    if py3:
-                        deny_input = input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
-                    else:
-                        deny_input = raw_input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
-                    if (deny_input == "Y" or deny_input == "y"):
-                        g_valid_perm = 1
-                        g_deny_flag = 1
-                    elif (deny_input == "N" or deny_input == "n"):
-                        g_valid_perm = 1
+                    #todo : validate user input
+                    command = GET_BIN+g_prog_input
+                    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None, shell=True)
+                    output = process.communicate()
 
-                path_array.pop(0)
+                    print output[0]
+                    path_array = output[0].split(" ")
 
-                for path in path_array:
-                    path = path.strip()
-                    inputvalue = inputvalue+path+":"+g_perm_input+";"
+                    g_valid_perm = 0
+                    while (g_valid_perm == 0):
+                        if py3:
+                            g_perm_input = input("Please enter the permission to grant the program: \n" + path_array[0] + "\n\n[R]ead, [W]rite, e[X]ecute: ")
+                        else:
+                            g_perm_input = raw_input("Please enter the permission to grant the program: \n" + path_array[0] + "\n\n[R]ead, [W]rite, e[X]ecute: ")
 
-                if (g_deny_flag == 1):
-                    inputvalue = inputvalue+"deny:-;"
+                        if (g_perm_input == "R" or g_perm_input == "r"):
+                            g_valid_perm = 1
+                        elif (g_perm_input == "W" or g_perm_input == "w"):
+                            g_valid_perm = 1
+                        elif (g_perm_input == "X" or g_perm_input == "x"):
+                            g_valid_perm = 1
 
-                inputvalue = inputvalue.strip()
+                    g_valid_perm = 0
+                    if (g_deny_flag == 0):
+                        while (g_valid_perm == 0):
+                            if py3:
+                                deny_input = input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
+                            else:
+                                deny_input = raw_input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
+                            if (deny_input == "Y" or deny_input == "y"):
+                                g_valid_perm = 1
+                                g_deny_flag = 1
+                            elif (deny_input == "N" or deny_input == "n"):
+                                g_valid_perm = 1
+
+                    path_array.pop(0)
+
+                    for path in path_array:
+                        path = path.strip()
+                        inputvalue = inputvalue+path+":"+g_perm_input+";"
+
+                    if (g_deny_set == 0):
+                        if (g_deny_flag == 1):
+                            inputvalue = inputvalue+"deny:-;"
+                            g_deny_set = 1
+
+                    inputvalue = inputvalue.strip()
+
+                    print NL+inputvalue
+
+                    g_valid_perm = 0
+                    while (g_valid_perm == 0):
+                        if py3:
+                            deny_input = input("\nWould you like to add another program to the attribute? [Y]es / [N]o: ")
+                        else:
+                            deny_input = raw_input("\nWould you like to add another program to the attribute? [Y]es / [N]o: ")
+                        if (deny_input == "Y" or deny_input == "y"):
+                            g_valid_perm = 1
+                        elif (deny_input == "N" or deny_input == "n"):
+                            g_valid_perm = 1
+                            g_end_build = 1
+
+                    if (g_end_build == 1):
+                        break
 
                 opflag = 'set'
-                print NL+inputvalue+NL
 
             # '-d' arg specifies directory
             elif opt in ("-d", "--dir"):
