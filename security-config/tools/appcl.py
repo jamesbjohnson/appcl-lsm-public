@@ -24,6 +24,9 @@
 #    Remove Attributes:
 #        Directory - python appcl.py --dir <input-directory> --remove
 #        File - python appcl.py --file <input-file> --remove
+#    Build mode:
+#        Directory - python appcl.py --dir <input-directory> --build
+#        File - python appcl.py --file <input-file> --build
 #
 #    OPTIONS
 #    -f file, --file=file
@@ -39,6 +42,11 @@
 #    -x, --remove
 #        Remove the AppCL LSM extended attribute and associated
 #        permission entries.
+#    -b, --build
+#        Build the AppCL attributes. Knowledge of the AppCL attribute
+#        format is not required when using build mode. The path for a
+#        program is also not required as it locates the path of the
+#        binary applications from the program name.
 #    -h, --help
 #        Help page
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -116,6 +124,9 @@ def main(argv):
                 print '\tRemove Attributes:'
                 print '\tDirectory - \n\tpython appcl.py --dir <input-directory> --remove'
                 print '\tFile - \n\tpython appcl.py --file <input-file> --remove \n'
+                print '\tBuild Mode:'
+                print '\tDirectory - \n\tpython appcl.py --dir <input-directory> --build'
+                print '\tFile - \n\tpython appcl.py --file <input-file> --build \n'
                 print 'OPTIONS'
                 print '\t-f file, --file=file'
                 print '\tSpecifies a file input. \n'
@@ -127,6 +138,11 @@ def main(argv):
                 print '\tView the AppCL LSM stored extended attribute for \n\tfile/directory contents. \n'
                 print '\t-x, --remove'
                 print '\tRemove the AppCL LSM extended attribute and associated \n\tpermission entries. \n'
+                print '\t-b, --build'
+                print '\tBuild the AppCL attributes. Knowledge of the AppCL attribute'
+                print '\tformat is not required when using build mode. The path for a'
+                print '\tprogram is also not required as it locates the path of the'
+                print '\tbinary applications from the program name.\n'
                 print '\t-h, --help'
                 print '\tHelp page \n'
                 sys.exit()
@@ -160,31 +176,12 @@ def main(argv):
                         elif (g_perm_input == "X" or g_perm_input == "x"):
                             g_valid_perm = 1
 
-                    g_valid_perm = 0
-                    if (g_deny_flag == 0):
-                        while (g_valid_perm == 0):
-                            if py3:
-                                deny_input = input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
-                            else:
-                                deny_input = raw_input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
-                            if (deny_input == "Y" or deny_input == "y"):
-                                g_valid_perm = 1
-                                g_deny_flag = 1
-                            elif (deny_input == "N" or deny_input == "n"):
-                                g_valid_perm = 1
-
                     path_array.pop(0)
 
                     for path in path_array:
                         path = path.strip()
                         inputvalue = inputvalue+path+":"+g_perm_input+";"
-
-                    if (g_deny_set == 0):
-                        if (g_deny_flag == 1):
-                            inputvalue = inputvalue+"deny:-;"
-                            g_deny_set = 1
-
-                    inputvalue = inputvalue.strip()
+                        inputvalue = inputvalue.strip()
 
                     print NL+inputvalue
 
@@ -203,6 +200,26 @@ def main(argv):
                     if (g_end_build == 1):
                         break
 
+                g_valid_perm = 0
+                if (g_deny_flag == 0):
+                    while (g_valid_perm == 0):
+                        if py3:
+                            deny_input = input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
+                        else:
+                            deny_input = raw_input("\nWould you like to DENY all other programs by default? [Y]es / [N]o: ")
+                        if (deny_input == "Y" or deny_input == "y"):
+                            g_valid_perm = 1
+                            g_deny_flag = 1
+                        elif (deny_input == "N" or deny_input == "n"):
+                            g_valid_perm = 1
+
+                if (g_deny_set == 0):
+                    if (g_deny_flag == 1):
+                        inputvalue = inputvalue+"deny:-;"
+                        inputvalue = inputvalue.strip()
+                        g_deny_set = 1
+
+                print NL+inputvalue+NL
                 opflag = 'set'
 
             # '-d' arg specifies directory

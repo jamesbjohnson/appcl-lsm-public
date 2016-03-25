@@ -85,6 +85,11 @@ python appcl.py -h
 - Directory - python appcl.py --dir <input-directory> --remove
 - File - python appcl.py --file <input-file> --remove
 
+#### Build mode:
+- Directory - python appcl.py --dir <input-directory> --build
+- File - python appcl.py --file <input-file> --build
+
+
 ## OPTIONS
 ######   -f file, --file=file
 - Specifies a file input.
@@ -100,6 +105,9 @@ python appcl.py -h
 
 ######   -x, --remove
 - Remove the AppCL LSM extended attribute and associated permission entries.
+
+######   -b, --build
+- Build the AppCL attributes. Knowledge of the AppCL attribute format is not required when using build mode. The path for a program is also not required as it locates the path of the binary applications from the program name.
 
 ######   -h, --help
 - Help page
