@@ -80,12 +80,8 @@ int check_current_cred_path(const char *sec_pathname, const struct cred *cred)
          if (!current_pathname)
                  return 0;
 
-         //printk(KERN_ALERT "CURRENT_PATHNAME: %s \n", current_pathname);
-
-         if (strncmp(current_pathname, sec_pathname, buf) == 0) {
-                // printk(KERN_ALERT "CHECK CURRENT PATH: INODE SEC LABEL SET: %s \n", current_pathname);
+         if (strncmp(current_pathname, sec_pathname, buf) == 0)
                  return 1;
-         }
 
          return 0;
 }
@@ -204,13 +200,13 @@ int appcl_check_rperm_match(struct inode_security_label *ilabel, const struct cr
         if (!p_count)
                 return 0;
 
+        r_perm &= MAY_READ | MAY_WRITE | MAY_APPEND | MAY_EXEC;
+
 	for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
 		if (mask == r_perm) {
                         c_perm = get_next_perm_enforce(ilabel, cred, i);
-                        if (c_perm == r_perm) {
-                                printk(KERN_ALERT "CHECK RPERM MATCH: MASK SET \n");
+                        if (c_perm == r_perm)
                                 return 1;
-                        }
                 }
         }
         return 0;
@@ -243,30 +239,21 @@ int appcl_check_permission_file_match(struct file *file, struct inode *inode, co
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
                 c_perm = get_next_perm_enforce(ilabel, cred, i);
                 if (c_perm) {
-                        printk(KERN_ALERT "FILE MATCH: C_PERM SET \n");
-                        printk(KERN_ALERT "FILE MATCH: FILE MODE %d \n", file_mode);
                         switch (file_mode) {
                                 case FMODE_READ:
-                                        if (c_perm == APPCL_READ){
-                                                printk(KERN_ALERT "FILE MATCH: FMODE READ SET \n");
+                                        if (c_perm == APPCL_READ)
                                                 return 0;
-                                        }
                                 break;
 
                                 case FMODE_WRITE:
-                                        if (file->f_flags & O_APPEND)
-                                                printk(KERN_ALERT "FILE MATCH: F_FLAGS APPEND SET \n");
-                                        if (c_perm == APPCL_WRITE) {
-                                                printk(KERN_ALERT "FILE MATCH: FMODE WRITE SET \n");
+                                        //if (file->f_flags & O_APPEND)
+                                        if (c_perm == APPCL_WRITE)
                                                 return 0;
-                                        }
                                 break;
 
                                 case FMODE_EXEC:
-                                        if (c_perm == APPCL_EXECUTE){
-                                                printk(KERN_ALERT "FILE RECEIVE: FMODE EXEC SET \n");
+                                        if (c_perm == APPCL_EXECUTE)
                                                 return 0;
-                                        }
                                 break;
                         }
                 }
@@ -300,35 +287,27 @@ int appcl_check_permission_mask_match(struct inode_security_label *ilabel, const
                 if (c_perm) {
                         switch (mask) {
                                 case MAY_READ:
-                                        if (c_perm == APPCL_READ){
-                                                printk(KERN_ALERT "CHECK PERMISSION MASK MATCH: READ SET \n");
-                                                return 0;
-                                        }
+                                        if (c_perm == APPCL_READ)
+                                                return 1;
                                 break;
 
                                 case MAY_WRITE:
-                                        if (c_perm == APPCL_WRITE) {
-                                                printk(KERN_ALERT "CHECK PERMISSION MASK MATCH: WRITE SET \n");
-                                                return 0;
-                                        }
+                                        if (c_perm == APPCL_WRITE)
+                                                return 1;
                                 break;
                                 case MAY_APPEND:
-                                        if (c_perm == APPCL_WRITE) {
-                                                printk(KERN_ALERT "CHECK PERMISSION MASK MATCH: APPEND SET \n");
-                                                return 0;
-                                        }
+                                        if (c_perm == APPCL_WRITE)
+                                                return 1;
                                 break;
 
                                 case MAY_EXEC:
-                                        if (c_perm == APPCL_EXECUTE) {
-                                                printk(KERN_ALERT "CHECK PERMISSION MASK MATCH: EXEC SET \n");
-                                                return 0;
-                                        }
+                                        if (c_perm == APPCL_EXECUTE)
+                                                return 1;
                                 break;
                         }
                 }
 	}
-	return 1;
+	return 0;
 }
 EXPORT_SYMBOL(appcl_check_permission_mask_match);
 

@@ -224,8 +224,6 @@ static int appcl_specific_perm_check(struct inode *inode, int perm)
 	if (!ilabel)
 		return 0;
 
-	perm &= MAY_READ | MAY_WRITE | MAY_APPEND | MAY_EXEC;
-
 	rcu_read_lock();
 	mutex_lock(&ilabel->lock);
 
@@ -233,6 +231,7 @@ static int appcl_specific_perm_check(struct inode *inode, int perm)
 	 * Fetch current credential and default behaviour state
 	 */
 	c_cred = get_current_cred();
+	validate_creds(c_cred);
 	d_behaviour = ilabel->d_behaviour;
 
 	/*
@@ -311,9 +310,9 @@ static int appcl_mask_perm_check(struct inode *inode, int mask)
 		 * Check requested permission mask against inode 'PACL' entries
 		 */
 		if (appcl_check_permission_mask_match(ilabel, c_cred, mask))
-			goto failout;
-		else
 			goto successout;
+		else
+			goto failout;
 	} else {
 		/*
 		 * Checks DENY default behaviour
