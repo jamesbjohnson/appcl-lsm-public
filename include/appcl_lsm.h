@@ -86,7 +86,7 @@ Linux kernel security module to implement program based access control mechanism
 /*
  * maximum label length
  */
-#define APPCL_LNG_LABEL	 		128
+#define APPCL_LNG_LABEL	 		255
 
 /*
  * inode inode_security_label->flags

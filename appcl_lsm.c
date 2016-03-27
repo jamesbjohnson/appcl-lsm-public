@@ -112,14 +112,14 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	 */
 	if ((permSplit = strsep(&value, split)) != NULL) {
 		len = strlen(permSplit);
-		path = kstrdup(permSplit, GFP_KERNEL);
-		x_path = kstrdup(path, GFP_KERNEL);
+		path = kstrndup(permSplit, APPCL_LNG_LABEL, GFP_KERNEL);
+		x_path = kstrndup(path, APPCL_LNG_LABEL, GFP_KERNEL);
 
 		/*
 		 * Check for default behaviour value
 		 */
-		if ((strcmp(x_path, APPCL_DEFAULT_DENY) == 0) ||
-			(strcmp(x_path, APPCL_DEFAULT_ALLOW) == 0))
+		if ((strncmp(x_path, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0) ||
+			(strncmp(x_path, APPCL_DEFAULT_ALLOW, LOWERVALUELEN) == 0))
 			goto outdefault;
 	}
 
@@ -145,7 +145,7 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	 */
 	if (x_path != NULL) {
 		if (strlen(x_path) > LOWERVALUELEN)
-			t_pe.inode_sec_pathname = kstrdup(x_path, GFP_KERNEL);
+			t_pe.inode_sec_pathname = kstrndup(x_path, APPCL_LNG_LABEL, GFP_KERNEL);
 		else
 			t_pe.inode_sec_pathname = APPCL_VALUE_UNLABELLED;
 	} else {
@@ -171,9 +171,9 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
  * Default behaviour out
  */
 outdefault:
-	t_pe.inode_sec_pathname = kstrdup(x_path, GFP_KERNEL);
+	t_pe.inode_sec_pathname = kstrndup(x_path, APPCL_LNG_LABEL, GFP_KERNEL);
 
-	if (strcmp(x_path, APPCL_DEFAULT_DENY) == 0)
+	if (strncmp(x_path, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
 		t_pe.e_perm = APPCL__DENY;
 	else
 		t_pe.e_perm = APPCL__ALLOW;
@@ -226,6 +226,7 @@ static int appcl_specific_perm_check(struct inode *inode, int perm)
 
 	perm &= MAY_READ | MAY_WRITE | MAY_APPEND | MAY_EXEC;
 
+	rcu_read_lock();
 	mutex_lock(&ilabel->lock);
 
 	/*
@@ -257,11 +258,13 @@ static int appcl_specific_perm_check(struct inode *inode, int perm)
 	}
 
 successout:
+	rcu_read_unlock();
 	mutex_unlock(&ilabel->lock);
 	put_cred(c_cred);
 	return 0;
 
 failout:
+	rcu_read_unlock();
 	mutex_unlock(&ilabel->lock);
 	put_cred(c_cred);
 	return -EACCES;
@@ -297,6 +300,7 @@ static int appcl_mask_perm_check(struct inode *inode, int mask)
         if (unlikely(IS_PRIVATE(inode)))
                 return 0;
 
+	rcu_read_lock();
 	mutex_lock(&ilabel->lock);
 
 	/*
@@ -322,11 +326,13 @@ static int appcl_mask_perm_check(struct inode *inode, int mask)
 	}
 
 successout:
+	rcu_read_unlock();
 	mutex_unlock(&ilabel->lock);
 	put_cred(c_cred);
 	return 0;
 
 failout:
+	rcu_read_unlock();
 	mutex_unlock(&ilabel->lock);
 	put_cred(c_cred);
 	return -EACCES;
@@ -354,7 +360,7 @@ static int appcl_inode_setotherxattr(struct dentry *dentry, const char *name)
 	 * Security namespace attribute, restrict to administrator
 	 */
 	if (strncmp(name, XATTR_SECURITY_PREFIX, sizeof XATTR_SECURITY_PREFIX - 1) == 0) {
-		if (strcmp(name, XATTR_NAME_CAPS) == 0) {
+		if (strncmp(name, XATTR_NAME_CAPS, sizeof XATTR_NAME_CAPS - 1) == 0) {
 			if (!capable(CAP_SETFCAP))
 				return -EPERM;
 		} else if (!capable(CAP_SYS_ADMIN)) {
@@ -411,11 +417,11 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 	if (strncmp(name, XATTR_NAME_APPCL, sizeof XATTR_NAME_APPCL - 1) == 0) {
 		if (value) {
 			char *temp = (char*)value;
-			const char *tempx = kstrdup(temp, GFP_KERNEL);
+			const char *tempx = kstrndup(temp, APPCL_LNG_LABEL, GFP_KERNEL);
 			char *opt = NULL;
 			char delim[1] = ";";
 
-			xvalue = kstrdup(tempx, GFP_KERNEL);
+			xvalue = kstrndup(tempx, APPCL_LNG_LABEL, GFP_KERNEL);
 
 			/*
 			 * Parse extended attribute value to 'PACL entries'
@@ -431,7 +437,7 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 					 */
 					t_behaviour = pe.inode_sec_pathname;
 					if (strncmp(t_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
-						d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
+						d_behaviour = kstrndup(APPCL_DEFAULT_DENY, LOWERVALUELEN, GFP_KERNEL);
 				} else {
 					break;
 				}
@@ -444,16 +450,16 @@ static void appcl_lsm_inode_post_setxattr(struct dentry *dentry, const char *nam
 			 * Checks DENY default behaviour, update label if true
 			 */
 			if (strncmp(d_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
-				ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
+				ilabel->d_behaviour = kstrndup(APPCL_DEFAULT_DENY, LOWERVALUELEN, GFP_KERNEL);
 			else
-				ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_ALLOW, GFP_KERNEL);
+				ilabel->d_behaviour = kstrndup(APPCL_DEFAULT_ALLOW, APPCL_LNG_LABEL, GFP_KERNEL);
 
 			/*
 			 * Set inodes 'xvalue' from extended attribute.
 			 * No xvalue set to 'known_huh [?]'
 			 */
 			if (xvalue != NULL)
-				ilabel->xvalue = kstrdup(xvalue, GFP_KERNEL);
+				ilabel->xvalue = kstrndup(xvalue, APPCL_LNG_LABEL, GFP_KERNEL);
 			else
 				ilabel->xvalue = appcl_known_huh;
 
@@ -627,9 +633,9 @@ static int inode_do_init(struct inode *inode, struct dentry *dentry)
 				char *opt = NULL;
 				char delim[1] = ";";
 				char *temp = (char*)value;
-				const char *tempx = kstrdup(temp, GFP_KERNEL);
+				const char *tempx = kstrndup(temp, APPCL_LNG_LABEL, GFP_KERNEL);
 
-				xvalue = kstrdup(tempx, GFP_KERNEL);
+				xvalue = kstrndup(tempx, APPCL_LNG_LABEL, GFP_KERNEL);
 
 				/*
 				 * Parse extended attribute value to 'PACL entries'
@@ -644,7 +650,7 @@ static int inode_do_init(struct inode *inode, struct dentry *dentry)
 						 */
 						t_behaviour = pe.inode_sec_pathname;
 						if (strncmp(t_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
-							d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
+							d_behaviour = kstrndup(APPCL_DEFAULT_DENY, LOWERVALUELEN, GFP_KERNEL);
 					} else {
 						break;
 					}
@@ -659,16 +665,16 @@ static int inode_do_init(struct inode *inode, struct dentry *dentry)
 	 * Checks DENY default behaviour, update label if true
 	 */
 	if (strncmp(d_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
-		ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
+		ilabel->d_behaviour = kstrndup(APPCL_DEFAULT_DENY, LOWERVALUELEN, GFP_KERNEL);
 	else
-		ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_ALLOW, GFP_KERNEL);
+		ilabel->d_behaviour = kstrndup(APPCL_DEFAULT_ALLOW, APPCL_LNG_LABEL, GFP_KERNEL);
 
 	/*
 	 * Set inodes 'xvalue' from extended attribute.
 	 * No xvalue set to 'known_huh [?]'
 	 */
 	 if (xvalue != NULL)
-	 	ilabel->xvalue = kstrdup(xvalue, GFP_KERNEL);
+	 	ilabel->xvalue = kstrndup(xvalue, APPCL_LNG_LABEL, GFP_KERNEL);
 	 else
 	 	ilabel->xvalue = appcl_known_huh;
 
@@ -717,11 +723,11 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 	if (strncmp(name, XATTR_APPCL_SUFFIX, sizeof XATTR_APPCL_SUFFIX - 1) == 0) {
 		if (value) {
 			char *temp = (char*)value;
-			const char *tempx = kstrdup(temp, GFP_KERNEL);
+			const char *tempx = kstrndup(temp, APPCL_LNG_LABEL, GFP_KERNEL);
 			char *opt = NULL;
 			char delim[1] = ";";
 
-			xvalue = kstrdup(tempx, GFP_KERNEL);
+			xvalue = kstrndup(tempx, APPCL_LNG_LABEL, GFP_KERNEL);
 
 			/*
 			 * Parse extended attribute value to 'PACL entries'
@@ -737,7 +743,7 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 					 */
 					t_behaviour = pe.inode_sec_pathname;
 					if (strncmp(t_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
-						d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
+						d_behaviour = kstrndup(APPCL_DEFAULT_DENY, LOWERVALUELEN, GFP_KERNEL);
 				} else {
 					break;
 				}
@@ -750,14 +756,14 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 			 * Checks DENY default behaviour, update label if true
 			 */
 			if (strncmp(d_behaviour, APPCL_DEFAULT_DENY, LOWERVALUELEN) == 0)
-				ilabel->d_behaviour = kstrdup(APPCL_DEFAULT_DENY, GFP_KERNEL);
+				ilabel->d_behaviour = kstrndup(APPCL_DEFAULT_DENY, LOWERVALUELEN, GFP_KERNEL);
 
 			/*
 			 * Set inodes 'xvalue' from extended attribute.
 			 * No xvalue set to 'known_huh [?]'
 			 */
 			if (xvalue != NULL)
-				ilabel->xvalue = kstrdup(xvalue, GFP_KERNEL);
+				ilabel->xvalue = kstrndup(xvalue, APPCL_LNG_LABEL, GFP_KERNEL);
 			else
 				ilabel->xvalue = appcl_known_huh;
 
@@ -790,7 +796,7 @@ static int appcl_lsm_inode_init_security(struct inode *inode, struct inode *dir,
 	if (value && len) {
 		ilabel = dirlabel;
 
-		*value = kstrdup(nano, GFP_NOFS);
+		*value = kstrndup(nano, APPCL_LNG_LABEL, GFP_NOFS);
 		if (*value == NULL) {
 			printk(KERN_ALERT "INITSECURITY -ENOMEM \n");
 			return -ENOMEM;
@@ -927,18 +933,6 @@ static int appcl_lsm_inode_rename(struct inode *old_dir, struct dentry *old_dent
 	return appcl_specific_perm_check(inode, MAY_WRITE);
 }
 
-/*
-static int appcl_lsm_inode_setattr(struct dentry *dentry, struct iattr *attr)
-{
-	return 0;
-}
-
-static int appcl_lsm_inode_getattr(const struct path *path)
-{
-	return 0;
-}
-*/
-
 static int appcl_lsm_inode_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	/*
@@ -946,6 +940,7 @@ static int appcl_lsm_inode_mkdir(struct inode *dir, struct dentry *dentry, umode
  	 */
 	 return appcl_specific_perm_check(dir, MAY_WRITE);
 }
+
 static int appcl_lsm_inode_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	/*
@@ -953,6 +948,7 @@ static int appcl_lsm_inode_rmdir(struct inode *dir, struct dentry *dentry)
  	 */
 	 return appcl_specific_perm_check(dir, MAY_WRITE);
 }
+
 static int appcl_lsm_inode_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	/*
@@ -1003,6 +999,7 @@ static int appcl_lsm_inode_symlink(struct inode *dir, struct dentry *dentry, con
  	 */
 	 return appcl_specific_perm_check(dir, MAY_WRITE);
 }
+
 /*
 static int appcl_lsm_inode_setattr(struct dentry *dentry, struct iattr *attr)
 {
@@ -1259,18 +1256,19 @@ static struct security_hook_list appcl_hooks[] = {
 	LSM_HOOK_INIT(inode_setsecurity, appcl_lsm_inode_setsecurity),
 	//LSM_HOOK_INIT(inode_init_security, appcl_lsm_inode_init_security),
 	/*
-	 * SUPERBLOCK HOOKS
-	 */
-	LSM_HOOK_INIT(sb_alloc_security, appcl_lsm_sb_alloc_security),
-	LSM_HOOK_INIT(sb_free_security, appcl_lsm_sb_free_security),
-	/*
 	 * INODE HOOKS
 	 */
 	LSM_HOOK_INIT(inode_alloc_security, appcl_lsm_inode_alloc_security),
         LSM_HOOK_INIT(inode_free_security, appcl_lsm_inode_free_security),
+	/*
+	 * General permission mask
+	 */
 	LSM_HOOK_INIT(inode_permission, appcl_lsm_inode_permission),
 	//LSM_HOOK_INIT(inode_setattr, appcl_lsm_inode_setattr),
 	//LSM_HOOK_INIT(inode_getattr, appcl_lsm_inode_getattr),
+	/*
+	 * Specific permission hooks
+	 */
 	LSM_HOOK_INIT(inode_create, appcl_lsm_inode_create),
 	LSM_HOOK_INIT(inode_rename, appcl_lsm_inode_rename),
 	LSM_HOOK_INIT(inode_link, appcl_lsm_inode_link),
@@ -1298,6 +1296,11 @@ static struct security_hook_list appcl_hooks[] = {
 	LSM_HOOK_INIT(cred_free, appcl_lsm_cred_free),
 	LSM_HOOK_INIT(cred_prepare, appcl_lsm_cred_prepare),
 	LSM_HOOK_INIT(cred_transfer, appcl_lsm_cred_transfer),
+	/*
+	 * SUPERBLOCK HOOKS
+	 */
+	LSM_HOOK_INIT(sb_alloc_security, appcl_lsm_sb_alloc_security),
+	LSM_HOOK_INIT(sb_free_security, appcl_lsm_sb_free_security),
 };
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
