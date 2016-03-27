@@ -487,7 +487,14 @@ static int appcl_lsm_inode_getxattr(struct dentry *dentry, const char *name)
 
 static int appcl_lsm_inode_removexattr(struct dentry *dentry, const char *name)
 {
+	struct inode *inode = d_backing_inode(dentry);
+	struct inode_security_label *ilabel = inode->i_security;
+	struct appcl_pacl_entry pe;
+	size_t i;
 	int ret = 0;
+
+	if (!ilabel)
+		return -ENOMEM;
 
 	/*
 	 * Security AppCL namespace attribute, restrict to administrator
@@ -499,6 +506,36 @@ static int appcl_lsm_inode_removexattr(struct dentry *dentry, const char *name)
 			ret = -EPERM;
 	} else {
 		ret = appcl_inode_setotherxattr(dentry, name);
+	}
+
+	/*
+	 * Successful removexattr operation - reset inode_security_label
+	 */
+	if (ret == 0) {
+		if (!ilabel)
+			return ret;
+
+		mutex_lock(&ilabel->lock);
+		/*
+	 	 * Set inode_security_label default values
+	 	 */
+		for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
+			pe.inode_sec_pathname = NULL;
+			pe.e_perm = 0;
+			pe.e_tag = 0;
+			ilabel->a_entries[i] = pe;
+		}
+		ilabel->xvalue = APPCL_VALUE_UNLABELLED;
+		ilabel->d_behaviour = APPCL_DEFAULT_ALLOW;
+		ilabel->valid_xvalue = INVALID_XV;
+		ilabel->a_count = 0;
+		ilabel->flags = 0;
+		ilabel->inode = inode;
+		/*
+	 	 * Re-set inode_security_label
+	 	 */
+		inode->i_security = ilabel;
+		mutex_unlock(&ilabel->lock);
 	}
 
 	return ret;
