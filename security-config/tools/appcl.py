@@ -99,6 +99,7 @@ def main(argv):
         g_end_build = 0
 
         py3 = version_info[0] > 2;
+        invalid_chars = [';', '/', ':', '*', '?', '"', '<', '>', '|', '&', ' ']
 
         try:
             opts, args = getopt.getopt(argv, "hd:f:v:gxb", ["help", "dir=", "file=", "set=", "get", "remove", "build"])
@@ -153,6 +154,15 @@ def main(argv):
                         g_prog_input = input("\nPlease enter the program name: ")
                     else:
                         g_prog_input = raw_input("\nPlease enter the program name: ")
+
+                    for c in g_prog_input:
+                        if c.isalnum():
+                            continue
+                        else:
+                            for i in invalid_chars:
+                                if (i == c):
+                                    print 'Please enter a valid application/program name.'
+                                    sys.exit(2)
 
                     #todo : validate user input
                     command = GET_BIN+g_prog_input
