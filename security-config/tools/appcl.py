@@ -33,6 +33,8 @@
 #        Specifies a file input.
 #    -d directory, --dir=directory
 #        Specifies a directory input.
+#    -r, --walk
+#    Recursively walk through directory. Only valid on directory input (-d, --dir).
 #    -v, --set
 #        Sets the new AppCL LSM value of the entended attribute,
 #        and associated permissions.
@@ -86,6 +88,7 @@ def main(argv):
         # 'get' flag indicates -g arg and retrives attributes
         # 'rm' flag indicates -x arg and attributes to be removed
         opflag = ''
+        recflag = 0
 
         inputdir = ''
         inputvalue = ''
@@ -102,12 +105,13 @@ def main(argv):
         invalid_chars = [';', '/', ':', '*', '?', '"', '<', '>', '|', '&', ' ']
 
         try:
-            opts, args = getopt.getopt(argv, "hd:f:v:gxb", ["help", "dir=", "file=", "set=", "get", "remove", "build"])
+            opts, args = getopt.getopt(argv, "hd:f:v:gxbr", ["help", "dir=", "file=", "set=", "get", "remove", "build", "walk"])
         except getopt.GetoptError:
             print '\nError: please read the help page for usage'
             print '\t python appcl.py --help\n'
             sys.exit(2)
         for opt, arg in opts:
+            # '-h' arg specifies help page
             if opt in ('-h', "--help"):
                 print '\nDESCRIPTION'
                 print '\tThe appcl.py script handles the extended attributes \n\tassociated with the AppCL LSM security module.'
@@ -133,6 +137,8 @@ def main(argv):
                 print '\tSpecifies a file input. \n'
                 print '\t-d directory, --dir=directory'
                 print '\tSpecifies a directory input. \n'
+                print '\t-r, --walk'
+                print '\tRecursively walk through directory. Only valid on directory input (-d, --dir). \n'
                 print '\t-v, --set'
                 print '\tSets the new AppCL LSM value of the entended attribute, \n\tand associated permissions. \n'
                 print '\t-g, --get'
@@ -147,6 +153,7 @@ def main(argv):
                 print '\t-h, --help'
                 print '\tHelp page \n'
                 sys.exit()
+            # '-b' arg specifies build mode
             elif opt in ('-b', '--build'):
                 print '\n*** BUILD MODE ***'
                 while True:
@@ -240,6 +247,9 @@ def main(argv):
             elif opt in ("-f", "--file"):
                 inputdir = arg
                 fileflag = 'file'
+            # '-r' arg specifies recursive through directory
+            elif opt in ('-r', "--walk"):
+                recflag = 1
             # '-v' arg specifies xattr value to set
             elif opt in ("-v", "--set"):
                 inputvalue = arg
@@ -260,17 +270,37 @@ def main(argv):
             print 'Extended attribute value: ', inputvalue
 
         if fileflag == 'dir':
-            if opflag == 'rm':
-                for filename in os.listdir(inputdir):
-                    subprocess.call([SET, "-x", APPCL_NS, inputdir+filename])
-                    print 'File attribute removed: ', filename
-            elif opflag == 'get':
-                for filename in os.listdir(inputdir):
-                    subprocess.call([GET, "-n", APPCL_NS, inputdir+filename])
-            elif opflag == 'set':
-                for filename in os.listdir(inputdir):
-                    subprocess.call([SET, "-n", APPCL_NS, "-v", inputvalue, inputdir+filename])
-                    print 'File attribute set: ', filename
+            if (recflag == 0):
+                if opflag == 'rm':
+                    for filename in os.listdir(inputdir):
+                        subprocess.call([SET, "-x", APPCL_NS, inputdir+filename])
+                        print 'File attribute removed: ', filename
+                elif opflag == 'get':
+                    for filename in os.listdir(inputdir):
+                        subprocess.call([GET, "-n", APPCL_NS, inputdir+filename])
+                elif opflag == 'set':
+                    for filename in os.listdir(inputdir):
+                        subprocess.call([SET, "-n", APPCL_NS, "-v", inputvalue, inputdir+filename])
+                        print 'File attribute set: ', filename
+            else:
+                if opflag == 'rm':
+                    for root, subdirs, files in os.walk(inputdir):
+                        for filename in files:
+                            filepath = os.path.join(root, filename)
+                            subprocess.call([SET, "-x", APPCL_NS, filepath])
+                            print 'File attribute removed: ', filepath
+                elif opflag == 'get':
+                    for root, subdirs, files in os.walk(inputdir):
+                        for filename in files:
+                            filepath = os.path.join(root, filename)
+                            subprocess.call([GET, "-n", APPCL_NS, filepath])
+                            print 'File attribute: ', filepath
+                elif opflag == 'set':
+                    for root, subdirs, files in os.walk(inputdir):
+                        for filename in files:
+                            filepath = os.path.join(root, filename)
+                            subprocess.call([SET, "-n", APPCL_NS, "-v", inputvalue, filepath])
+                            print 'File attribute set: ', filepath
         elif fileflag == 'file':
             if opflag == 'rm':
                 subprocess.call([SET, "-x", APPCL_NS, inputdir])

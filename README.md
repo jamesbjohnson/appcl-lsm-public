@@ -97,6 +97,9 @@ python appcl.py -h
 ######   -d directory, --dir=directory
 - Specifies a directory input.
 
+######   -r, --walk
+-    Recursively walk through directory. Only valid on directory input (-d, --dir).
+
 ######   -v, --set
 - Sets the new AppCL LSM value of the extended attribute, and associated permissions.
 
