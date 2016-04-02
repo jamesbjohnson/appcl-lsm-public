@@ -5,7 +5,7 @@ Linux kernel security module to implement program based access control mechanism
 
     Author - James Johnson
     License - GNU General Public License v3.0
-    Copyright (C) 2015  James Johnson
+    Copyright (C) 2016  James Johnson
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by

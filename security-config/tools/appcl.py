@@ -3,7 +3,7 @@
 # Python tool to manage the security labelling of files/directories
 # for the AppCL LSM access control module.
 # Help:
-#      python appcl.py -h
+#      python appcl.py -h/--help
 #
 #    DESCRIPTION
 #    The appcl.py script handles the extended attributes associated with the
@@ -55,7 +55,7 @@
 # Linux kernel security module to implement program based access control mechanisms
 #    Author - James Johnson
 #    License - GNU General Public License v3.0
-#    Copyright (C) 2015  James Johnson
+#    Copyright (C) 2016  James Johnson
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation, either version 3 of the License, or
@@ -172,7 +172,6 @@ def main(argv):
                 print '\tMERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the'
                 print '\tGNU General Public License for more details.'
                 print '\tFor a full copy of the GNU General Public License, see \n\t<http://www.gnu.org/licenses/>.'
-
                 sys.exit()
             # '-b' arg specifies build mode
             elif opt in ('-b', '--build'):

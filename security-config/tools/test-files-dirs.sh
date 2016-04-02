@@ -1,5 +1,5 @@
 #!/bin/bash
-# update AppCL LSM in security directory of linux kernel
+# add test files and directories
 
 HOME="/home/jamesjohnson"
 
