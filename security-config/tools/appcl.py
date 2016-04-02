@@ -113,12 +113,17 @@ def main(argv):
         for opt, arg in opts:
             # '-h' arg specifies help page
             if opt in ('-h', "--help"):
+                print '\nNAME'
+                print '\tappcl.py - manage AppCL LSM security policies'
+                print '\nSYNOPSIS'
+                print '\tappcl.py [FILE] ... [OPTION] ...'
+                print '\tappcl.py [DIRECTORY] ... [OPTION] ...'
                 print '\nDESCRIPTION'
                 print '\tThe appcl.py script handles the extended attributes \n\tassociated with the AppCL LSM security module.'
                 print '\tThe setfattr and getfattr system utilities can also \n\tbe used to manage extended attributes.'
                 print '\tIf using these utilities the appcl security namespace \n\tmust be specified [-n security.appcl]'
                 print '\tfor AppCL LSM to process and enforce the attribute.'
-                print '\tThe attr package is still required for appcl.py functionality. \n'
+                print '\tThe attr package is still required for appcl.py. \n'
                 print 'EXAMPLE USAGE'
                 print '\tSet Attributes:'
                 print '\tDirectory -\n\tpython appcl.py --dir <input-directory> --set <xattr-value>'
@@ -152,6 +157,22 @@ def main(argv):
                 print '\tbinary applications from the program name.\n'
                 print '\t-h, --help'
                 print '\tHelp page \n'
+                print '\nAUTHOR'
+                print '\tWritten by James Johnson'
+                print '\nREPORTING BUGS'
+                print '\tReport AppCL LSM/appcl.py bugs: <http://appcl-lsm.org/contact/>'
+                print '\nCOPYRIGHT'
+                print '\tCopyright (C) 2016: License GNU General Public License v3.0.'
+                print '\tThis program is free software: you can redistribute it and/or'
+                print '\tmodify it under the terms of the GNU General Public License as'
+                print '\tpublished by the Free Software Foundation, either version 3 of'
+                print '\tthe License, or (at your option) any later version.'
+                print '\tThis program is distributed in the hope that it will be useful,'
+                print '\tbut WITHOUT ANY WARRANTY; without even the implied warranty of'
+                print '\tMERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the'
+                print '\tGNU General Public License for more details.'
+                print '\tFor a full copy of the GNU General Public License, see \n\t<http://www.gnu.org/licenses/>.'
+
                 sys.exit()
             # '-b' arg specifies build mode
             elif opt in ('-b', '--build'):
@@ -171,7 +192,6 @@ def main(argv):
                                     print 'Please enter a valid application/program name.'
                                     sys.exit(2)
 
-                    #todo : validate user input
                     command = GET_BIN+g_prog_input
                     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None, shell=True)
                     output = process.communicate()
