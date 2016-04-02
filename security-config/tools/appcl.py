@@ -143,7 +143,7 @@ def main(argv):
                 print '\t-d directory, --dir=directory'
                 print '\tSpecifies a directory input. \n'
                 print '\t-r, --walk'
-                print '\tRecursively walk through directory. Only valid on directory input (-d, --dir). \n'
+                print '\tRecursively walk through directory. \n\tOnly valid on directory input (-d, --dir). \n'
                 print '\t-v, --set'
                 print '\tSets the new AppCL LSM value of the entended attribute, \n\tand associated permissions. \n'
                 print '\t-g, --get'

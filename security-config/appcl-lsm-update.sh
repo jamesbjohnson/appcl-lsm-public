@@ -3,6 +3,7 @@
 
 HOME="/home/jamesjohnson"
 LINUX_SRC="linux-4.3"
+#LINUX_SRC="linux-4.5"
 
 cd $HOME/appcl-lsm/ &&
 git pull &&
