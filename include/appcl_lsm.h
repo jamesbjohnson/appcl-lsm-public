@@ -93,6 +93,7 @@ Linux kernel security module to implement program based access control mechanism
  */
 #define APPCL_INODE_INSTANT		8
 #define APPCL_ATTR_SET			16
+#define APPCL_ATTR_INIT			20
 
 /*
  * default label values

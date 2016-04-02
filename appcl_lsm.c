@@ -817,35 +817,38 @@ static int appcl_lsm_inode_setsecurity(struct inode *inode, const char *name,
 
 	return 0;
 }
-/*
+
 static int appcl_lsm_inode_init_security(struct inode *inode, struct inode *dir,
                                         const struct qstr *qstr, const char **name,
 					void **value, size_t *len)
 {
 	struct inode_security_label *ilabel = inode->i_security;
 	struct inode_security_label *dirlabel = dir->i_security;
-	const char *nano = "/bin/nano:w;";
+	const char *t_xvalue = NULL;
+	const char *xvalue = NULL;
 
 	if (name)
 		*name = XATTR_APPCL_SUFFIX;
 
 	if (value && len) {
-		ilabel = dirlabel;
-
-		*value = kstrndup(nano, APPCL_LNG_LABEL, GFP_NOFS);
-		if (*value == NULL) {
-			printk(KERN_ALERT "INITSECURITY -ENOMEM \n");
-			return -ENOMEM;
+		rcu_read_lock();
+		t_xvalue = kstrndup(ilabel->xvalue, APPCL_LNG_LABEL, GFP_NOFS);
+		rcu_read_unlock();
+		if (t_xvalue) {
+			ilabel = dirlabel;
+			ilabel->flags = APPCL_ATTR_INIT;
 		}
 
-		*len = strlen(nano);
+		xvalue = kstrndup(t_xvalue, APPCL_LNG_LABEL, GFP_NOFS);
+		*value = kstrndup(xvalue, APPCL_LNG_LABEL, GFP_NOFS);
+		if (*value == NULL)
+			return -ENOMEM;
 
-		printk(KERN_ALERT "INITSECURITY HASLEN! \n");
+		*len = strlen(t_xvalue);
 	}
 
 	return 0;
 }
-*/
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
@@ -1290,7 +1293,7 @@ static struct security_hook_list appcl_hooks[] = {
 	LSM_HOOK_INIT(inode_removexattr, appcl_lsm_inode_removexattr),
 	LSM_HOOK_INIT(d_instantiate, appcl_lsm_d_instantiate),
 	LSM_HOOK_INIT(inode_setsecurity, appcl_lsm_inode_setsecurity),
-	//LSM_HOOK_INIT(inode_init_security, appcl_lsm_inode_init_security),
+	LSM_HOOK_INIT(inode_init_security, appcl_lsm_inode_init_security),
 	/*
 	 * INODE HOOKS
 	 */
@@ -1327,11 +1330,11 @@ static struct security_hook_list appcl_hooks[] = {
 	/*
 	 * CRED HOOKS
 	 */
-	LSM_HOOK_INIT(bprm_set_creds, appcl_lsm_bprm_set_creds),
 	LSM_HOOK_INIT(cred_alloc_blank, appcl_lsm_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_free, appcl_lsm_cred_free),
 	LSM_HOOK_INIT(cred_prepare, appcl_lsm_cred_prepare),
 	LSM_HOOK_INIT(cred_transfer, appcl_lsm_cred_transfer),
+	LSM_HOOK_INIT(bprm_set_creds, appcl_lsm_bprm_set_creds),
 	/*
 	 * SUPERBLOCK HOOKS
 	 */
