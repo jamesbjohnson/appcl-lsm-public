@@ -832,7 +832,7 @@ static int appcl_lsm_inode_init_security(struct inode *inode, struct inode *dir,
 
 	if (value && len) {
 		rcu_read_lock();
-		t_xvalue = kstrndup(ilabel->xvalue, APPCL_LNG_LABEL, GFP_NOFS);
+		t_xvalue = kstrndup(dirlabel->xvalue, APPCL_LNG_LABEL, GFP_NOFS);
 		rcu_read_unlock();
 		if (t_xvalue) {
 			ilabel = dirlabel;
