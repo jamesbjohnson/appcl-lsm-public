@@ -202,16 +202,25 @@ def main(argv):
                     g_valid_perm = 0
                     while (g_valid_perm == 0):
                         if py3:
-                            g_perm_input = input("Please enter the permission to grant the program: \n" + path_array[0] + "\n\n[R]ead, [W]rite, e[X]ecute: ")
+                            g_perm_input = input("Please enter the permissions to grant the program: \n" + path_array[0] + "\n\n[r]ead, [w]rite, e[x]ecute: ")
                         else:
-                            g_perm_input = raw_input("Please enter the permission to grant the program: \n" + path_array[0] + "\n\n[R]ead, [W]rite, e[X]ecute: ")
+                            g_perm_input = raw_input("Please enter the permissions to grant the program: \n" + path_array[0] + "\n\n[r]ead, [w]rite, e[x]ecute: ")
 
-                        if (g_perm_input == "R" or g_perm_input == "r"):
-                            g_valid_perm = 1
-                        elif (g_perm_input == "W" or g_perm_input == "w"):
-                            g_valid_perm = 1
-                        elif (g_perm_input == "X" or g_perm_input == "x"):
-                            g_valid_perm = 1
+                        for char in g_perm_input:
+                            if (len(g_perm_input) > 4):
+                                g_valid_perm = 0
+                                print '\nPlease enter valid permissions.'
+                                break;
+                            if (char == "r"):
+                                g_valid_perm = 1
+                            elif (char == "w"):
+                                g_valid_perm = 1
+                            elif (char == "x"):
+                                g_valid_perm = 1
+                            else:
+                                g_valid_perm = 0
+                                print '\nPlease enter valid permissions.'
+                                break;
 
                     path_array.pop(0)
 
@@ -298,6 +307,7 @@ def main(argv):
                 elif opflag == 'get':
                     for filename in os.listdir(inputdir):
                         subprocess.call([GET, "-n", APPCL_NS, inputdir+filename])
+                        print 'File attribute: ', filename
                 elif opflag == 'set':
                     for filename in os.listdir(inputdir):
                         subprocess.call([SET, "-n", APPCL_NS, "-v", inputvalue, inputdir+filename])

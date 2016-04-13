@@ -38,6 +38,13 @@ Linux kernel security module to implement program based access control mechanism
 #include <linux/fs.h>
 #include <stdbool.h>
 #include <linux/xattr.h>
+#include <linux/stddef.h>
+#include <linux/kdev_t.h>
+#include <linux/init.h>
+#include <linux/audit.h>
+#include <linux/path.h>
+#include <linux/key.h>
+#include <linux/skbuff.h>
 
 /*
  * xattr security namespace
@@ -62,6 +69,16 @@ Linux kernel security module to implement program based access control mechanism
 #define APPCL_WRITE               	(0x02)
 #define APPCL_EXECUTE             	(0x01)
 #define APPCL_DEFAULT_PERM             	(0x00)
+/*
+ * e_perm entry in appcl_pacl_entry, combined permission values
+ */
+#define APPCL_R				4
+#define APPCL_W				2
+#define APPCL_X				1
+#define APPCL_RW			6
+#define APPCL_RX			5
+#define APPCL_WX			3
+#define APPCL_RWX			7
 
 /*
  * xattr e_perm representation
@@ -124,7 +141,7 @@ Linux kernel security module to implement program based access control mechanism
 
 struct appcl_pacl_entry {
 	short			e_tag;
-        unsigned short          e_perm;
+        int          		e_perm;
 	const char *inode_sec_pathname; /* app path name */
 };
 
@@ -154,6 +171,48 @@ struct inode_security_label {
 	struct inode *inode;    /* back pointer to inode object */
         struct mutex lock;
 };
+
+/*
+ *
+ * task_audit_data - task security label
+ * contains information for current process
+ *      - bprm_pathname, path of binary application
+ *
+ */
+
+struct task_audit_data {
+        char type;
+        const char *bprm_pathname;
+#define APPCL_TASK_FREE     1
+#define APPCL_TASK_PERM     0
+        union {
+                struct dentry *dentry;
+                struct inode *inode;
+        } u;
+};
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ *
+ * AUDIT.C
+ * audit functions
+ *
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+extern int check_current_cred_path(const char *sec_pathname, const struct cred *cred);
+extern int check_fpath_match(struct file *file, const struct cred *cred);
+extern int check_inode_path_match(struct inode *inode, const struct cred *cred);
+
+extern unsigned int get_inode_perm_count(struct inode_security_label *ilabel);
+extern unsigned int get_current_inode_perm_count(struct inode_security_label *ilabel, const struct cred *cred);
+
+extern int get_current_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred);
+extern int get_next_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred, size_t i);
+
+extern int appcl_check_permission_file_match(struct file *file, struct inode *inode, const struct cred *cred);
+extern int appcl_check_permission_mask_match(struct inode_security_label *ilabel, const struct cred *cred, int mask);
+extern int appcl_check_rperm_match(struct inode_security_label *ilabel, const struct cred *cred, int mask, int r_perm);
 
 /*
  *

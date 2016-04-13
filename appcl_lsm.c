@@ -78,7 +78,7 @@ Linux kernel security module to implement program based access control mechanism
 #include <linux/time.h>
 
 #include "include/appcl_lsm.h"
-#include "include/audit.h"
+//#include "include/audit.h"
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *
@@ -101,9 +101,10 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	const char *x_path = NULL;
 	char *permSplit = NULL;
 	char delim[1] = ";"; char split[1] = ":";
-	char perm[1];
 	int pe_perm = 0;
 	int len = 0;
+
+	//char *pch;
 
 	len = strlen(value);
 
@@ -127,17 +128,23 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 	 * Get permission value
 	 */
 	if ((permSplit = strsep(&value, delim)) != NULL) {
+		pe_perm = 0;
 		len = strlen(permSplit);
-		perm[0] = permSplit[0];
+		if (len > 4) {
+			/*
+			 * Invalid permission value length
+			 * Set max length to LOWERVALUELEN
+			 */
+			 len = LOWERVALUELEN;
+		}
+		if (strchr(permSplit, 'r') != NULL)
+			pe_perm = pe_perm + APPCL_R;
 
-		if (strncmp(perm, XATTR_READ, 1) == 0)
-			pe_perm = APPCL_READ;
-		else if (strncmp(perm, XATTR_WRITE, 1) == 0)
-			pe_perm = APPCL_WRITE;
-		else if (strncmp(perm, XATTR_EXECUTE, 1) == 0)
-			pe_perm = APPCL_EXECUTE;
-		else
-			pe_perm = APPCL_OTHER;
+		if (strchr(permSplit, 'w') != NULL)
+			pe_perm = pe_perm + APPCL_W;
+
+		if (strchr(permSplit, 'x') != NULL)
+			pe_perm = pe_perm + APPCL_X;
 	}
 
 	/*
@@ -154,8 +161,9 @@ struct appcl_pacl_entry make_appcl_entry(char *value)
 
 	/*
 	 * Set permission value in appcl_pacl_entry
+	 * Check valid permission length
 	 */
-	if (pe_perm)
+	if (pe_perm > 0 && len > 0 && len <= LOWERVALUELEN)
 		t_pe.e_perm = pe_perm;
 	else
 		t_pe.e_perm = APPCL_OTHER;

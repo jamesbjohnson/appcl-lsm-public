@@ -49,7 +49,7 @@ Linux kernel security module to implement program based access control mechanism
  #include <linux/time.h>
 
  #include "include/appcl_lsm.h"
- #include "include/audit.h"
+ //#include "include/audit.h"
 
  /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
   *
@@ -94,14 +94,14 @@ EXPORT_SYMBOL(check_current_cred_path);
  *
  */
 
-unsigned short get_current_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred)
+int get_current_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred)
 {
         size_t i;
 
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
                 struct appcl_pacl_entry entry;
                 entry = ilabel->a_entries[i];
-                if (entry.e_perm) {
+                if (entry.inode_sec_pathname) {
                         const char *sec_pathname = "/";
                         sec_pathname = entry.inode_sec_pathname;
                         if (check_current_cred_path(sec_pathname, cred))
@@ -112,11 +112,11 @@ unsigned short get_current_perm_enforce(struct inode_security_label *ilabel, con
 }
 EXPORT_SYMBOL(get_current_perm_enforce);
 
-unsigned short get_next_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred, size_t n)
+int get_next_perm_enforce(struct inode_security_label *ilabel, const struct cred *cred, size_t n)
 {
         struct appcl_pacl_entry entry;
         entry = ilabel->a_entries[n];
-        if (entry.e_perm) {
+        if (entry.inode_sec_pathname) {
                 const char *sec_pathname = "/";
                 sec_pathname = entry.inode_sec_pathname;
                 if (check_current_cred_path(sec_pathname, cred))
@@ -142,7 +142,7 @@ unsigned int get_inode_perm_count(struct inode_security_label *ilabel)
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
                 struct appcl_pacl_entry entry;
                 entry = ilabel->a_entries[i];
-                if (entry.e_tag)
+                if (entry.e_perm)
                         p_count++;
                 else
                         return p_count;
@@ -169,7 +169,7 @@ unsigned int get_current_inode_perm_count(struct inode_security_label *ilabel, c
         for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
                 struct appcl_pacl_entry entry;
                 entry = ilabel->a_entries[i];
-                if (entry.e_tag) {
+                if (entry.inode_sec_pathname) {
                         const char *sec_pathname = "/";
                         sec_pathname = entry.inode_sec_pathname;
                         if (check_current_cred_path(sec_pathname, cred))
@@ -194,7 +194,7 @@ int appcl_check_rperm_match(struct inode_security_label *ilabel, const struct cr
                                       int mask, int r_perm)
 {
         size_t i;
-        unsigned short c_perm = 0;
+        int c_perm = 0;
         unsigned short p_count = 0;
         p_count = get_inode_perm_count(ilabel);
         if (!p_count)
@@ -205,13 +205,129 @@ int appcl_check_rperm_match(struct inode_security_label *ilabel, const struct cr
 	for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
 		if (mask == r_perm) {
                         c_perm = get_next_perm_enforce(ilabel, cred, i);
-                        if (c_perm == r_perm)
-                                return 1;
+                        if (c_perm) {
+                		if (c_perm == APPCL_RWX)
+                			return 1;
+
+                        	switch (r_perm) {
+                                	case MAY_READ:
+                                        	if ((c_perm == APPCL_R) ||
+                                        		(c_perm == APPCL_RW) ||
+                                        		(c_perm == APPCL_RX))
+                                                	return 1;
+                                	break;
+
+                        		case MAY_WRITE:
+                                        	if ((c_perm == APPCL_W) ||
+                                			(c_perm == APPCL_RW) ||
+                                			(c_perm == APPCL_WX))
+                                                	return 1;
+                        	 	break;
+                                	case MAY_APPEND:
+                                		if ((c_perm == APPCL_W) ||
+                                        		(c_perm == APPCL_RW) ||
+                                        		(c_perm == APPCL_WX))
+                                                	return 1;
+                                	break;
+
+                        	 	case MAY_EXEC:
+                                        	if ((c_perm == APPCL_X) ||
+                                        		(c_perm == APPCL_RX) ||
+                                        		(c_perm == APPCL_WX))
+                                                	return 1;
+                                	break;
+                        	}
+        	 	}
                 }
         }
         return 0;
 }
 EXPORT_SYMBOL(appcl_check_rperm_match);
+
+/*
+ *
+ * appcl_check_permission_mask_match
+ *      - check requested permission mask against labelled permissions
+ *      - return rough privileges from mask
+ *
+ */
+
+int appcl_check_permission_mask_match(struct inode_security_label *ilabel, const struct cred *cred, int mask)
+{
+	size_t i;
+        int c_perm = 0;
+        unsigned short p_count = 0;
+        p_count = get_inode_perm_count(ilabel);
+        if (!p_count)
+                return 0;
+
+	mask &= MAY_READ | MAY_WRITE | MAY_APPEND | MAY_EXEC;
+
+	for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
+		size_t n = i;
+		c_perm = get_next_perm_enforce(ilabel, cred, n);
+                if (c_perm) {
+                	if (c_perm == APPCL_RWX)
+                		return 1;
+
+                        switch (mask) {
+                                case MAY_READ:
+                                        if ((c_perm == APPCL_R) ||
+                                        	(c_perm == APPCL_RW) ||
+                                        	(c_perm == APPCL_RX))
+                                                return 1;
+                                break;
+
+                                case MAY_WRITE:
+                                        if ((c_perm == APPCL_W) ||
+                                		(c_perm == APPCL_RW) ||
+                                		(c_perm == APPCL_WX))
+                                                return 1;
+                                break;
+                                case MAY_APPEND:
+                                        if ((c_perm == APPCL_W) ||
+                                        	(c_perm == APPCL_RW) ||
+                                        	(c_perm == APPCL_WX))
+                                                return 1;
+                                break;
+
+                                case MAY_EXEC:
+                                        if ((c_perm == APPCL_X) ||
+                                        	(c_perm == APPCL_RX) ||
+                                        	(c_perm == APPCL_WX))
+                                                return 1;
+                                break;
+                        }
+                }
+	}
+	return 0;
+}
+EXPORT_SYMBOL(appcl_check_permission_mask_match);
+
+/*
+ *
+ * check_inode_path_match
+ *      - check for inode security label
+ *      - pass this to get_current_inode_perm_count to
+          check ilabel entries against cred
+ *      - p_count, number of entries that match cred path
+ *
+ */
+
+int check_inode_path_match(struct inode *inode, const struct cred *cred)
+{
+       struct inode_security_label *ilabel;
+       unsigned int p_count = 0;
+
+       ilabel = inode->i_security;
+       if (!ilabel)
+              return 0;
+
+       p_count = get_current_inode_perm_count(ilabel, cred);
+
+       return p_count;
+}
+EXPORT_SYMBOL(check_inode_path_match);
 
 /*
  *
@@ -224,7 +340,7 @@ EXPORT_SYMBOL(appcl_check_rperm_match);
 int appcl_check_permission_file_match(struct file *file, struct inode *inode, const struct cred *cred)
 {
         struct inode_security_label *ilabel;
-        unsigned short c_perm = 0;
+        int c_perm = 0;
         fmode_t file_mode = 0;
         size_t i;
 
@@ -261,80 +377,6 @@ int appcl_check_permission_file_match(struct file *file, struct inode *inode, co
         return 0;
 }
 EXPORT_SYMBOL(appcl_check_permission_file_match);
-
-/*
- *
- * appcl_check_permission_mask_match
- *      - check requested permission mask against labelled permissions
- *      - return rough privileges from mask
- *
- */
-
-int appcl_check_permission_mask_match(struct inode_security_label *ilabel, const struct cred *cred, int mask)
-{
-	size_t i;
-        unsigned short c_perm = 0;
-        unsigned short p_count = 0;
-        p_count = get_inode_perm_count(ilabel);
-        if (!p_count)
-                return 0;
-
-	mask &= MAY_READ | MAY_WRITE | MAY_APPEND | MAY_EXEC;
-
-	for (i = 0; i < APPCL_MAX_INODE_ENTRIES; i++) {
-		size_t n = i;
-		c_perm = get_next_perm_enforce(ilabel, cred, n);
-                if (c_perm) {
-                        switch (mask) {
-                                case MAY_READ:
-                                        if (c_perm == APPCL_READ)
-                                                return 1;
-                                break;
-
-                                case MAY_WRITE:
-                                        if (c_perm == APPCL_WRITE)
-                                                return 1;
-                                break;
-                                case MAY_APPEND:
-                                        if (c_perm == APPCL_WRITE)
-                                                return 1;
-                                break;
-
-                                case MAY_EXEC:
-                                        if (c_perm == APPCL_EXECUTE)
-                                                return 1;
-                                break;
-                        }
-                }
-	}
-	return 0;
-}
-EXPORT_SYMBOL(appcl_check_permission_mask_match);
-
-/*
- *
- * check_inode_path_match
- *      - check for inode security label
- *      - pass this to get_current_inode_perm_count to
-          check ilabel entries against cred
- *      - p_count, number of entries that match cred path
- *
- */
-
-int check_inode_path_match(struct inode *inode, const struct cred *cred)
-{
-       struct inode_security_label *ilabel;
-       unsigned int p_count = 0;
-
-       ilabel = inode->i_security;
-       if (!ilabel)
-              return 0;
-
-       p_count = get_current_inode_perm_count(ilabel, cred);
-
-       return p_count;
-}
-EXPORT_SYMBOL(check_inode_path_match);
 
 int check_fpath_match(struct file *file, const struct cred *cred)
 {

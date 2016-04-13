@@ -2,6 +2,7 @@
 # update AppCL LSM in security directory of linux kernel
 
 HOME="/home/jamesjohnson"
+#HOME="/root"
 LINUX_SRC="linux-4.3"
 #LINUX_SRC="linux-4.5"
 
