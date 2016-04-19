@@ -118,7 +118,7 @@ config LSM_MMAP_MIN_ADDR
 	  this low address space will need the permission specific to the
 	  systems running LSM.
 
-source security/appcl-lsm/Kconfig
+source security/appcl-lsm-public/Kconfig
 
 source security/selinux/Kconfig
 source security/smack/Kconfig
@@ -158,7 +158,7 @@ choice
 		bool "Yama" if SECURITY_YAMA=y
 
 	config DEFAULT_SECURITY_APPCL
-		bool "AppCL" if SECURITY_APPCL=y
+		bool "AppCL LSM" if SECURITY_APPCL=y
 
 	config DEFAULT_SECURITY_DAC
 		bool "Unix Discretionary Access Controls"
@@ -167,7 +167,7 @@ endchoice
 
 config DEFAULT_SECURITY
 	string
-	default "appcl" if DEFAULT_SECURITY_APPCL
+	default "appcl-lsm" if DEFAULT_SECURITY_APPCL
 	default "selinux" if DEFAULT_SECURITY_SELINUX
 	default "smack" if DEFAULT_SECURITY_SMACK
 	default "tomoyo" if DEFAULT_SECURITY_TOMOYO
