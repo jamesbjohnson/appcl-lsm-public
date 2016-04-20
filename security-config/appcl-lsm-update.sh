@@ -14,6 +14,6 @@ rm $HOME/$LINUX_SRC/security/Kconfig &&
 cp $HOME/appcl-lsm-public/security-config/Makefile $HOME/$LINUX_SRC/security &&
 cp $HOME/appcl-lsm-public/security-config/Kconfig $HOME/$LINUX_SRC/security &&
 cd $HOME/$LINUX_SRC/ &&
-#make clean &&
+make clean &&
 make menuconfig &&
 make && make modules_install && make install
