@@ -1311,8 +1311,6 @@ static struct security_hook_list appcl_hooks[] = {
 	 * General permission mask
 	 */
 	LSM_HOOK_INIT(inode_permission, appcl_lsm_inode_permission),
-	//LSM_HOOK_INIT(inode_setattr, appcl_lsm_inode_setattr),
-	//LSM_HOOK_INIT(inode_getattr, appcl_lsm_inode_getattr),
 	/*
 	 * Specific permission hooks
 	 */
@@ -1326,6 +1324,8 @@ static struct security_hook_list appcl_hooks[] = {
 	LSM_HOOK_INIT(inode_mknod, appcl_lsm_inode_mknod),
 	LSM_HOOK_INIT(inode_readlink, appcl_lsm_inode_readlink),
 	LSM_HOOK_INIT(inode_follow_link, appcl_lsm_inode_follow_link),
+	//LSM_HOOK_INIT(inode_setattr, appcl_lsm_inode_setattr),
+	//LSM_HOOK_INIT(inode_getattr, appcl_lsm_inode_getattr),
 	/*
 	 * FILE HOOKS
 	 */
